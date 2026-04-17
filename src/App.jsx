@@ -161,6 +161,39 @@ function genId() {
 const ALL_SLOTS = generateSlots(SALON.hours.open, SALON.hours.close, SALON.slotMinutes);
 
 /* ═══════════════════════════════════════════════════════════
+   STORAGE SHIM — falls back to localStorage when window.storage
+   (Claude Artifact API) is not available (e.g. Vercel deploy)
+═══════════════════════════════════════════════════════════ */
+if (typeof window !== "undefined" && !window.storage) {
+  window.storage = {
+    get: (key) => {
+      try {
+        const value = localStorage.getItem(key);
+        return Promise.resolve(value !== null ? { key, value } : null);
+      } catch (e) { return Promise.reject(e); }
+    },
+    set: (key, value) => {
+      try {
+        localStorage.setItem(key, value);
+        return Promise.resolve({ key, value });
+      } catch (e) { return Promise.reject(e); }
+    },
+    delete: (key) => {
+      try {
+        localStorage.removeItem(key);
+        return Promise.resolve({ key, deleted: true });
+      } catch (e) { return Promise.reject(e); }
+    },
+    list: (prefix) => {
+      try {
+        const keys = Object.keys(localStorage).filter(k => prefix ? k.startsWith(prefix) : true);
+        return Promise.resolve({ keys });
+      } catch (e) { return Promise.reject(e); }
+    },
+  };
+}
+
+/* ═══════════════════════════════════════════════════════════
    STORAGE HOOK
 ═══════════════════════════════════════════════════════════ */
 function useBookings() {
