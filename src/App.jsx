@@ -194,6 +194,28 @@ if (typeof window !== "undefined" && !window.storage) {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   IMAGE COMPRESSION — resize & compress before saving to
+   localStorage to stay well under the ~5MB per-key limit
+═══════════════════════════════════════════════════════════ */
+function compressImage(dataUrl, maxPx = 400, quality = 0.75) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+      const w = Math.round(img.width  * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width  = w;
+      canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => resolve(dataUrl); // fallback: use original
+    img.src = dataUrl;
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════
    STORAGE HOOK
 ═══════════════════════════════════════════════════════════ */
 function useBookings() {
@@ -317,9 +339,10 @@ function useStylistSettings() {
   };
 
   const setPhoto = async (id, dataUrl) => {
-    // Save photo in its own key (prevents overwrite race)
-    try { await window.storage.set("je_photo_" + id, dataUrl); } catch (_) {}
-    setSettings(prev => ({ ...prev, [id]: { ...(prev[id]||{}), photo: dataUrl } }));
+    // Compress first to stay under localStorage size limits
+    const compressed = await compressImage(dataUrl, 400, 0.75);
+    try { await window.storage.set("je_photo_" + id, compressed); } catch (_) {}
+    setSettings(prev => ({ ...prev, [id]: { ...(prev[id]||{}), photo: compressed } }));
   };
 
   const setWorkDays = (id, days) => {
@@ -376,8 +399,10 @@ function useSalonSettings() {
   }, []);
 
   const setLogo = async (dataUrl) => {
-    setLogoState(dataUrl);
-    try { await window.storage.set("je_salon_logo", dataUrl); } catch (_) {}
+    // Compress first to stay under localStorage size limits
+    const compressed = await compressImage(dataUrl, 300, 0.8);
+    setLogoState(compressed);
+    try { await window.storage.set("je_salon_logo", compressed); } catch (_) {}
   };
 
   const removeLogo = async () => {
