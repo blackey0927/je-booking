@@ -41,12 +41,15 @@ const SALON = {
 };
 
 const DEFAULT_SERVICES = [
-  { id:"cut",       zh:"剪髮",    en:"Haircut",       icon:"✂️", duration:15,  price:"$180",    priceNote:"",     category:"基本",  color:"#a0c4b8", desc:"量身剪裁，依臉形與需求設計造型" },
-  { id:"shampoo",   zh:"洗髮",    en:"Shampoo",       icon:"🚿", duration:15,  price:"$100",    priceNote:"",     category:"基本",  color:"#7a9aaa", desc:"深層清潔頭皮，舒壓按摩洗髮" },
-  { id:"spa",       zh:"SPA洗",   en:"SPA Wash",      icon:"🐱", duration:30,  price:"$300",    priceNote:"",     category:"技術",  color:"#c4bc9a", desc:"精油頭皮按摩洗髮" },
-  { id:"perm",      zh:"燙髮",    en:"Perm",          icon:"〰",  duration:480, price:"$600",    priceNote:"起",   category:"技術",  color:"#c8a97e", desc:"熱塑燙、冷燙、巴西燙等多種選擇" },
-  { id:"color",     zh:"染髮",    en:"Hair Color",    icon:"🎨", duration:150, price:"$500",    priceNote:"起",   category:"技術",  color:"#b8a0c4", desc:"全染、挑染、補染髮根" },
-  { id:"treatment", zh:"護髮",    en:"Treatment",     icon:"✨", duration:30,  price:"$500",    priceNote:"起",   category:"養護",  color:"#c4a0a0", desc:"深層修護、蛋白質補充、光澤修復" },
+  { id:"cut_male",   zh:"男子剪髮", en:"Men's Haircut",    icon:"✂️", duration:20,  price:"$180",  priceNote:"",   category:"基本", color:"#a0c4b8", desc:"男士精緻剪裁，Fade 刀法、造型設計" },
+  { id:"cut_female", zh:"女子剪髮", en:"Women's Haircut",  icon:"✂️", duration:30,  price:"$250",  priceNote:"起", category:"基本", color:"#a0c4b8", desc:"量身剪裁，依臉形與需求設計造型" },
+  { id:"cut_bang",   zh:"修瀏海",   en:"Bang Trim",        icon:"✂️", duration:10,  price:"$50",   priceNote:"",   category:"基本", color:"#a0c4b8", desc:"快速修剪瀏海，保持清爽俐落" },
+  { id:"shampoo",    zh:"洗髮",     en:"Shampoo",          icon:"🚿", duration:15,  price:"$100",  priceNote:"",   category:"基本", color:"#7a9aaa", desc:"深層清潔頭皮，舒壓按摩洗髮" },
+  { id:"eyebrow",    zh:"修眉",     en:"Eyebrow Trim",     icon:"💅", duration:15,  price:"$100",  priceNote:"",   category:"基本", color:"#c4bc9a", desc:"修整眉型，讓五官更立體精緻" },
+  { id:"spa",        zh:"SPA洗",    en:"SPA Wash",         icon:"🐱", duration:30,  price:"$300",  priceNote:"",   category:"技術", color:"#c4bc9a", desc:"精油頭皮按摩洗髮" },
+  { id:"perm",       zh:"燙髮",     en:"Perm",             icon:"〰",  duration:480, price:"$600",  priceNote:"起", category:"技術", color:"#c8a97e", desc:"熱塑燙、冷燙、巴西燙等多種選擇" },
+  { id:"color",      zh:"染髮",     en:"Hair Color",       icon:"🎨", duration:150, price:"$500",  priceNote:"起", category:"技術", color:"#b8a0c4", desc:"全染、挑染、補染髮根" },
+  { id:"treatment",  zh:"護髮",     en:"Treatment",        icon:"✨", duration:30,  price:"$500",  priceNote:"起", category:"養護", color:"#c4a0a0", desc:"深層修護、蛋白質補充、光澤修復" },
 ];
 let SERVICES = DEFAULT_SERVICES; // overridden dynamically
 
@@ -55,17 +58,17 @@ const DEFAULT_STYLISTS = [
     id:"ken",    name:"獻爸",  title:"院長・技術總監", photo:null,
     icon:"👨‍🦱", exp:"10年",   specialty:["洗髮","SPA洗","護髮"],
     color:"#c4835a", bio:"20年精湛技藝，擅長男士精緻剪裁與女士創意造型，每位客人都是藝術作品。",
-    workDays:[1,2,3,4,5,6], // Mon-Sat (0=Sun)
+    workDays:[1,2,3,4,5,6],
   },
   {
     id:"mei",    name:"闆娘",  title:"染髮專師", photo:null,
-    icon:"👩‍🦰", exp:"20年",    specialty:["剪髮","洗髮","SPA洗","燙髮","染髮","護髮"],
+    icon:"👩‍🦰", exp:"20年",   specialty:["男子剪髮","女子剪髮","修瀏海","修眉","洗髮","SPA洗","燙髮","染髮","護髮"],
     color:"#b8a0c4", bio:"色彩魔法師，精通日系霧感色、歐美挑染與各式漸層染色技術。",
     workDays:[2,3,4,5,6,0],
   },
   {
     id:"kai",    name:"Nancy",  title:"剪髮設計師", photo:null,
-    icon:"👨‍🎨", exp:"6年",    specialty:["剪髮","洗髮","SPA洗","燙髮","染髮","護髮"],
+    icon:"👨‍🎨", exp:"6年",    specialty:["男子剪髮","女子剪髮","修瀏海","修眉","洗髮","SPA洗","燙髮","染髮","護髮"],
     color:"#a0c4b8", bio:"刀工精準俐落，男士 Fade 刀法專家，也擅長女士俐落短髮造型。",
     workDays:[1,3,4,5,6,0],
   },
@@ -78,6 +81,15 @@ const DEFAULT_STYLISTS = [
 ];
 
 let STYLISTS = DEFAULT_STYLISTS; // overridden in SalonApp scope
+
+// Returns array of service objects for a booking (supports single serviceId and multi serviceIds)
+function getBookingSvcs(booking, svcs) {
+  const list = svcs || SERVICES;
+  const ids = (booking.serviceIds && booking.serviceIds.length > 0)
+    ? booking.serviceIds
+    : (booking.serviceId ? [booking.serviceId] : []);
+  return ids.map(id => list.find(s => s.id === id)).filter(Boolean);
+}
 
 const WEEK_DAYS = ["日","一","二","三","四","五","六"];
 const STATUS_COLOR = { confirmed:"#a0c4b8", pending:"#c4bc9a", cancelled:"#c4a0a0" };
@@ -484,8 +496,11 @@ function useCustomers() {
     if (!booking || !booking.customerPhone) return;
     const key = booking.customerPhone.replace(/[-\s]/g, "");
     // Capture price BEFORE entering state updater (avoid closure over mutable SERVICES)
-    const svc = SERVICES.find(s => s.id === booking.serviceId) || DEFAULT_SERVICES.find(s => s.id === booking.serviceId);
-    const price = svc ? parseInt((svc.price||"0").replace(/[^0-9]/g,""),10)||0 : 0;
+    const ids = (booking.serviceIds && booking.serviceIds.length > 0) ? booking.serviceIds : (booking.serviceId ? [booking.serviceId] : []);
+    const price = ids.reduce((sum, id) => {
+      const s = SERVICES.find(x => x.id === id) || DEFAULT_SERVICES.find(x => x.id === id);
+      return sum + (s ? parseInt((s.price||"0").replace(/[^0-9]/g,""),10)||0 : 0);
+    }, 0);
     setCustomers(prev => {
       const existing = prev[key] || { phone: booking.customerPhone, name: booking.customerName, lineId: booking.lineId||"", firstVisit: booking.date, visits: 0, totalSpend: 0, history: [] };
       const record = { date: booking.date, time: booking.time, service: svcName, stylist: stylistName, bookingId: booking.id || genId() };
@@ -664,7 +679,7 @@ function AdminLockScreen({ onUnlock, isMobile }) {
 ═══════════════════════════════════════════════════════════ */
 function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEFAULT_STYLISTS, services=DEFAULT_SERVICES }) {
   const [step, setStep] = useState(0);
-  const [sel, setSel]   = useState({ service:null, stylist:null, date:null, time:null });
+  const [sel, setSel]   = useState({ services:[], stylist:null, date:null, time:null });
   const [form, setForm] = useState({ name:"", phone:"", lineId:"", notes:"" });
   const [done, setDone] = useState(null);
   const [calDate, setCalDate] = useState(() => { const d=new Date(); return {y:d.getFullYear(),m:d.getMonth()}; });
@@ -675,29 +690,33 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
   // Use prop-passed lists so updates are reactive
   const SERVICES_LOCAL = services;
   const STYLISTS_LOCAL  = stylists;
-  const svcObj     = SERVICES_LOCAL.find(s=>s.id===sel.service);
-  const stylistObj = STYLISTS_LOCAL.find(s=>s.id===sel.stylist);
+  const selSvcs        = SERVICES_LOCAL.filter(s => sel.services.includes(s.id));
+  const svcObj         = selSvcs[0] || null; // primary (for backward compat)
+  const totalDuration  = selSvcs.reduce((sum, s) => sum + (s.duration || 0), 0);
+  const stylistObj     = STYLISTS_LOCAL.find(s=>s.id===sel.stylist);
 
   const availableSlots = useMemo(() => {
-    if (!sel.stylist || !sel.date || !svcObj) return [];
+    if (!sel.stylist || !sel.date || sel.services.length === 0) return [];
     const dh       = getDayHours(sel.date);
     const isToday  = formatDate(sel.date) === formatDate(new Date());
     const nowMins  = isToday ? new Date().getHours() * 60 + new Date().getMinutes() : 0;
     return ALL_SLOTS.filter(slot => {
       const slotMins = slotToMinutes(slot);
       if (slotMins < dh.open) return false;
-      if (slotMins + svcObj.duration > dh.close) return false;
+      if (slotMins + totalDuration > dh.close) return false;
       // Block past slots for today (add 15min buffer)
       if (isToday && slotMins < nowMins + 15) return false;
-      return isSlotAvailable(slot, sel.stylist, sel.date, bookings, svcObj.duration);
+      return isSlotAvailable(slot, sel.stylist, sel.date, bookings, totalDuration);
     });
-  }, [sel.stylist, sel.date, sel.service, bookings]);
+  }, [sel.stylist, sel.date, sel.services, bookings, totalDuration]);
 
-  const reset = () => { setStep(0); setSel({service:null,stylist:null,date:null,time:null}); setForm({name:"",phone:"",lineId:"",notes:""}); setDone(null); };
+  const reset = () => { setStep(0); setSel({services:[],stylist:null,date:null,time:null}); setForm({name:"",phone:"",lineId:"",notes:""}); setDone(null); };
 
   const confirmBook = () => {
     const booking = {
-      serviceId: sel.service, stylistId: sel.stylist,
+      serviceId:  sel.services[0] || "",   // primary for backward compat
+      serviceIds: sel.services,             // multi-service array
+      stylistId: sel.stylist,
       date: formatDate(sel.date), time: sel.time,
       customerName: form.name, customerPhone: form.phone, lineId: form.lineId, notes: form.notes,
     };
@@ -741,18 +760,27 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
       {step===0 && (
         <div>
           <h2 style={h2Style}>選擇服務項目</h2>
+          <p style={{ fontSize:".84rem", color:"var(--ink3)", marginBottom:"1rem", marginTop:"-.5rem" }}>可複選多項加值服務 ✦</p>
           <div style={{ display:"grid", gridTemplateColumns: isMobile?"1fr 1fr":"repeat(3,1fr)", gap:isMobile?".75rem":"1rem" }}>
             {SERVICES_LOCAL.map((svc,si) => {
-              const active = sel.service===svc.id;
+              const active = sel.services.includes(svc.id);
               return (
-                <button key={svc.id} onClick={()=>setSel(p=>({...p,service:svc.id}))}
+                <button key={svc.id} onClick={()=>setSel(p=>{
+                  const next = p.services.includes(svc.id)
+                    ? p.services.filter(id=>id!==svc.id)
+                    : [...p.services, svc.id];
+                  return {...p, services:next, stylist:null, date:null, time:null};
+                })}
                   className={`svc-card fade-up fade-up-${Math.min(si+1,6)}${active?" active":""}`}
                   style={{ display:"flex", flexDirection:"column", gap:0, padding:0, textAlign:"left", WebkitTapHighlightColor:"transparent" }}>
                   <div className="accent-bar"/>
                   <div style={{ padding:isMobile?".85rem .9rem .65rem":"1rem 1.1rem .8rem", borderBottom:"1px solid var(--line)", flex:1 }}>
                     <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:".55rem" }}>
                       <span style={{ fontSize:isMobile?"1.25rem":"1.45rem", lineHeight:1 }}>{svc.icon}</span>
-                      <span style={{ fontSize:".86rem", padding:".15rem .45rem", borderRadius:20, background:active?`rgba(${hexToRgb(svc.color)},.12)`:"var(--bg2)", color:active?svc.color:"var(--ink3)", border:`1px solid ${active?`rgba(${hexToRgb(svc.color)},.25)`:"var(--line)"}`, letterSpacing:".04em" }}>{svc.category}</span>
+                      <div style={{ display:"flex", gap:".3rem", alignItems:"center" }}>
+                        {active && <span style={{ fontSize:".7rem", background:"var(--copper)", color:"#fff", borderRadius:"50%", width:16, height:16, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700 }}>✓</span>}
+                        <span style={{ fontSize:".86rem", padding:".15rem .45rem", borderRadius:20, background:active?`rgba(${hexToRgb(svc.color)},.12)`:"var(--bg2)", color:active?svc.color:"var(--ink3)", border:`1px solid ${active?`rgba(${hexToRgb(svc.color)},.25)`:"var(--line)"}`, letterSpacing:".04em" }}>{svc.category}</span>
+                      </div>
                     </div>
                     <div style={{ fontFamily:"'Playfair Display',serif", fontSize:isMobile?".9rem":"1rem", fontWeight:500, color:active?"var(--copper)":"var(--ink)", marginBottom:".35rem" }}>{svc.zh}</div>
                     <div style={{ fontSize:".84rem", color:"var(--ink3)", lineHeight:1.62 }}>{svc.desc}</div>
@@ -765,7 +793,18 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
               );
             })}
           </div>
-          <NavBtns onNext={()=>setStep(1)} nextDisabled={!sel.service} isMobile={isMobile}/>
+          {/* Selected summary bar */}
+          {sel.services.length > 0 && (
+            <div style={{ marginTop:"1rem", padding:".65rem 1rem", background:"var(--copper-bg)", border:"1px solid var(--copper-bd)", borderRadius:"var(--r-sm)", display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:".4rem" }}>
+              <div style={{ fontSize:".84rem", color:"var(--copper)" }}>
+                已選：{selSvcs.map(s=>s.zh).join("・")}
+              </div>
+              <div style={{ fontSize:".78rem", color:"var(--ink3)", fontFamily:"'DM Mono',monospace" }}>
+                合計 {totalDuration}min
+              </div>
+            </div>
+          )}
+          <NavBtns onNext={()=>setStep(1)} nextDisabled={sel.services.length===0} isMobile={isMobile}/>
         </div>
       )}
 
@@ -775,7 +814,10 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
           <h2 style={h2Style}>選擇設計師</h2>
           <div style={{ display:"grid", gridTemplateColumns: isMobile?"1fr 1fr":"1fr 1fr", gap:".7rem", marginBottom:".7rem" }}>
             {STYLISTS_LOCAL.map(st => {
-              const canDoSvc = st.specialty.includes(svcObj?.zh);
+              const canDoSvc = sel.services.every(id => {
+                const s = SERVICES_LOCAL.find(x => x.id === id);
+                return s && st.specialty.includes(s.zh);
+              });
               const active   = sel.stylist===st.id;
               return (
                 <button key={st.id} onClick={()=>canDoSvc&&setSel(p=>({...p,stylist:st.id,date:null,time:null}))}
@@ -893,11 +935,12 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
             <div style={{ padding:"1rem 1.1rem" }}>
               <div style={{ fontSize:"1.32rem", letterSpacing:".18em", color:"#666666", textTransform:"uppercase", marginBottom:".6rem" }}>預約摘要</div>
               {[
-                [svcObj?.icon||"✂", "服務", `${svcObj?.zh}（${svcObj?.duration}分鐘）`, svcObj?.color],
+                ["✂️", "服務", selSvcs.length > 0 ? selSvcs.map(s=>`${s.zh}（${s.duration}分）`).join(" ＋ ") : "—", "var(--copper)"],
                 [stylistObj?.icon||"👤", "設計師", `${stylistObj?.name}・${stylistObj?.title}`, stylistObj?.color],
                 ["📅", "日期", displayDate(sel.date), "var(--copper)"],
                 ["⏰", "時間", sel.time, "var(--copper)"],
-                ["💰", "費用", `${svcObj?.price}${svcObj?.priceNote}`, svcObj?.color],
+                ["⏱", "總時長", `${totalDuration} 分鐘`, "var(--copper)"],
+                ["💰", "費用", selSvcs.map(s=>`${s.price}${s.priceNote}`).join(" ＋ "), "var(--copper)"],
               ].map(([icon,label,val,color])=>(
                 <div key={label} style={{ display:"flex", alignItems:"center", gap:".7rem", marginBottom:".5rem" }}>
                   <span style={{ width:28, height:28, borderRadius:"50%", background:`rgba(${hexToRgb(color||"var(--copper)")},.1)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:".96rem", flexShrink:0 }}>{icon}</span>
@@ -942,7 +985,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
           {/* Summary card — plain div, no card() helper */}
           <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:"var(--r)", marginBottom:"1.2rem", textAlign:"left", overflow:"hidden" }}>
             {[
-              ["服務",    SERVICES_LOCAL.find(s=>s.id===done.serviceId)?.zh || done.serviceId],
+              ["服務",    (done.serviceIds||[done.serviceId]).map(id=>SERVICES_LOCAL.find(s=>s.id===id)?.zh||id).join("・")],
               ["設計師",  STYLISTS_LOCAL.find(s=>s.id===done.stylistId)?.name || done.stylistId],
               ["日期",    `${displayDate(done.date)} (${done.time})`],
               ["姓名",    done.customerName],
@@ -983,32 +1026,36 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
 function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobile, stylists=DEFAULT_STYLISTS }) {
   const today = formatDate(new Date());
   const [form, setForm] = useState({
-    serviceId:"cut", stylistId: STYLISTS[0].id,
+    serviceIds:["cut_male"], stylistId: STYLISTS[0].id,
     date: today, time:"10:00",
     customerName:"", customerPhone:"", notes:"", lineId:"",
   });
   const [saved, setSaved] = useState(false);
 
-  const svcObj     = SERVICES.find(s => s.id === form.serviceId);
-  const stylistObj = STYLISTS.find(s => s.id === form.stylistId);
+  const selSvcsM    = SERVICES.filter(s => form.serviceIds.includes(s.id));
+  const svcObj      = selSvcsM[0] || null;
+  const totalDurM   = selSvcsM.reduce((sum,s)=>sum+(s.duration||0),0);
+  const stylistObj  = STYLISTS.find(s => s.id === form.stylistId);
 
   const dh = useMemo(() => {
     try { return getDayHours(parseDate(form.date)); } catch(_) { return {open:600,close:1260}; }
   }, [form.date]);
 
   const slots = useMemo(() => {
-    if (!form.serviceId || !form.stylistId || !form.date) return [];
+    if (!form.serviceIds.length || !form.stylistId || !form.date) return [];
     return ALL_SLOTS.filter(slot => {
       const sm = slotToMinutes(slot);
-      if (sm < dh.open || sm + (svcObj?.duration||45) > dh.close) return false;
-      return isSlotAvailable(slot, form.stylistId, parseDate(form.date), bookings, svcObj?.duration||45);
+      if (sm < dh.open || sm + totalDurM > dh.close) return false;
+      return isSlotAvailable(slot, form.stylistId, parseDate(form.date), bookings, totalDurM);
     });
-  }, [form.serviceId, form.stylistId, form.date, bookings, dh]);
+  }, [form.serviceIds, form.stylistId, form.date, bookings, dh, totalDurM]);
 
   const handleSubmit = () => {
     if (!form.customerName || !form.customerPhone || !form.time) return;
     onBook({
-      serviceId: form.serviceId, stylistId: form.stylistId,
+      serviceId:  form.serviceIds[0] || "", // primary
+      serviceIds: form.serviceIds,
+      stylistId: form.stylistId,
       date: form.date, time: form.time,
       customerName: form.customerName, customerPhone: form.customerPhone,
       lineId: form.lineId, notes: form.notes,
@@ -1030,15 +1077,27 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
 
           {/* Service */}
           <div>
-            <label className="field-label">服務項目</label>
+            <label className="field-label">服務項目（可複選）</label>
             <div style={{ display:"flex", flexWrap:"wrap", gap:".4rem" }}>
-              {SERVICES.map(svc=>(
-                <button key={svc.id} onClick={()=>setForm(p=>({...p,serviceId:svc.id,time:""}))}
-                  style={{ padding:".32rem .75rem", borderRadius:"var(--r-sm)", border:`1px solid ${form.serviceId===svc.id?"var(--copper)":"var(--line)"}`, background:form.serviceId===svc.id?"var(--copper-bg)":"var(--card)", color:form.serviceId===svc.id?"var(--copper)":"var(--ink2)", fontSize:".87rem", cursor:"pointer" }}>
-                  {svc.icon} {svc.zh}
-                </button>
-              ))}
+              {SERVICES.map(svc=>{
+                const on = form.serviceIds.includes(svc.id);
+                return (
+                  <button key={svc.id} onClick={()=>setForm(p=>({
+                    ...p,
+                    serviceIds: on ? p.serviceIds.filter(id=>id!==svc.id) : [...p.serviceIds, svc.id],
+                    time:""
+                  }))}
+                    style={{ padding:".32rem .75rem", borderRadius:"var(--r-sm)", border:`1px solid ${on?"var(--copper)":"var(--line)"}`, background:on?"var(--copper-bg)":"var(--card)", color:on?"var(--copper)":"var(--ink2)", fontSize:".87rem", cursor:"pointer" }}>
+                    {on && <span style={{ marginRight:".2rem" }}>✓</span>}{svc.icon} {svc.zh}
+                  </button>
+                );
+              })}
             </div>
+            {selSvcsM.length > 0 && (
+              <div style={{ marginTop:".4rem", fontSize:".78rem", color:"var(--ink3)" }}>
+                合計 {totalDurM} 分鐘
+              </div>
+            )}
           </div>
 
           {/* Stylist */}
@@ -1105,14 +1164,14 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
           {/* Summary */}
           {form.customerName && form.time && (
             <div style={{ padding:".75rem 1rem", background:"var(--bg2)", borderRadius:"var(--r-sm)", border:"1px solid var(--line)", fontSize:".87rem", color:"var(--ink2)", lineHeight:1.8 }}>
-              📋 {form.date} {form.time}｜{svcObj?.zh}（{svcObj?.duration}min）｜{stylistObj?.name}｜{form.customerName}
+              📋 {form.date} {form.time}｜{selSvcsM.map(s=>s.zh).join("・")}（{totalDurM}min）｜{stylistObj?.name}｜{form.customerName}
             </div>
           )}
 
           <button onClick={handleSubmit}
-            disabled={!form.customerName||!form.customerPhone||!form.time}
+            disabled={!form.customerName||!form.customerPhone||!form.time||form.serviceIds.length===0}
             className="btn-copper"
-            style={{ opacity:(!form.customerName||!form.customerPhone||!form.time)?.38:1, cursor:(!form.customerName||!form.customerPhone||!form.time)?"not-allowed":"pointer", fontSize:"1.32rem", letterSpacing:".12em" }}>
+            style={{ opacity:(!form.customerName||!form.customerPhone||!form.time||form.serviceIds.length===0)?.38:1, cursor:(!form.customerName||!form.customerPhone||!form.time||form.serviceIds.length===0)?"not-allowed":"pointer", fontSize:"1.32rem", letterSpacing:".12em" }}>
             {saved ? "✓ 預約已建立！" : "確認新增預約"}
           </button>
         </div>
@@ -1297,7 +1356,8 @@ function ScheduleView({ bookings, isMobile, stylistSettings, onAddBooking, styli
                 <div style={{ padding:".3rem", fontSize:".84rem", color:"var(--ink3)", fontFamily:"'DM Mono',monospace", textAlign:"right", display:"flex", alignItems:"center", justifyContent:"flex-end", paddingRight:".5rem", borderRight:"1px solid var(--line)" }}>{slot}</div>
                 {STYLISTS.map(st=>{
                   const booking = dayBookings.find(b=>b.stylistId===st.id && b.time===slot);
-                  const svc     = booking ? SERVICES.find(s=>s.id===booking.serviceId) : null;
+                  const svcList = booking ? getBookingSvcs(booking, SERVICES) : [];
+                  const svc     = svcList[0] || null;
                   const isOff   = !isStylistAvailable(st, viewDate, stylistSettings);
                   return (
                     <div key={st.id} style={{
@@ -1308,7 +1368,7 @@ function ScheduleView({ bookings, isMobile, stylistSettings, onAddBooking, styli
                       {isOff && !booking && <div style={{ fontSize:".70rem", color:"#cccccc", textAlign:"center", marginTop:".3rem" }}>休</div>}
                       {booking && (
                         <div style={{ fontSize:".64rem", color:st.color, lineHeight:1.4 }}>
-                          <div style={{ fontWeight:600 }}>{svc?.zh}</div>
+                          <div style={{ fontWeight:600 }}>{svcList.map(s=>s.zh).join("・") || svc?.zh}</div>
                           <div style={{ color:"#666666" }}>{booking.customerName}</div>
                         </div>
                       )}
@@ -1930,7 +1990,8 @@ function ServicesMenu({ isMobile, servicesMgr }) {
    BOOKING CARD (shared)
 ═══════════════════════════════════════════════════════════ */
 function BookingCard({ booking, onUpdateStatus, onDelete, isMobile, lineSettings, stylistSettings, stylists=DEFAULT_STYLISTS }) {
-  const svc   = SERVICES.find(s=>s.id===booking.serviceId);
+  const svcs  = getBookingSvcs(booking, SERVICES);
+  const svc   = svcs[0] || null;  // primary (icon/color)
   const st    = stylists.find(s=>s.id===booking.stylistId);
   const photo = stylistSettings?.[st?.id]?.photo;
   const [confirm, setConfirm]     = useState(false);
@@ -1959,7 +2020,7 @@ function BookingCard({ booking, onUpdateStatus, onDelete, isMobile, lineSettings
           <span style={{ fontSize:"1.32rem" }}>{svc?.icon}</span>
         </div>
         <div style={{ flex:1 }}>
-          <div style={{ fontSize:".94rem", color:"var(--ink)", fontWeight:600 }}>{svc?.zh}</div>
+          <div style={{ fontSize:".94rem", color:"var(--ink)", fontWeight:600 }}>{svcs.map(s=>s.zh).join("・") || booking.serviceId}</div>
           <div style={{ fontSize:".86rem", color:st?.color }}>{st?.icon} {st?.name} · {booking.time}</div>
         </div>
         <span style={{ padding:".12rem .5rem", borderRadius:20, fontSize:".70rem", background:`rgba(${hexToRgb(STATUS_COLOR[booking.status])},.12)`, color:STATUS_COLOR[booking.status], border:`1px solid rgba(${hexToRgb(STATUS_COLOR[booking.status])},.25)` }}>
@@ -1972,7 +2033,7 @@ function BookingCard({ booking, onUpdateStatus, onDelete, isMobile, lineSettings
           ["電話", booking.customerPhone],
           ...(booking.lineId?[["LINE ID", booking.lineId]]:[]),
           ["日期", displayDate(booking.date)],
-          ["費用", `${svc?.price}${svc?.priceNote||""}`],
+          ["費用", svcs.map(s=>`${s.price}${s.priceNote||""}`).join(" ＋ ") || "—"],
           ...(booking.notes?[["備注", booking.notes]]:[]),
         ].map(([k,v])=>(
           <div key={k} style={{ display:"flex", gap:".4rem", fontSize:".84rem" }}>
@@ -2330,10 +2391,11 @@ export default function SalonApp() {
   // Wrap addBooking to also upsert customer
   const handleBook = (booking) => {
     try {
-      const svc     = (servicesMgr.services || DEFAULT_SERVICES).find(s => s.id === booking.serviceId);
+      const svcs    = getBookingSvcs(booking, servicesMgr.services || DEFAULT_SERVICES);
+      const svcName = svcs.map(s=>s.zh).join("・") || booking.serviceId || "";
       const stylist = (stylistsMgr.stylists || DEFAULT_STYLISTS).find(s => s.id === booking.stylistId);
       addBooking(booking);
-      customerMgr.upsertFromBooking(booking, svc?.zh||"", stylist?.name||"");
+      customerMgr.upsertFromBooking(booking, svcName, stylist?.name||"");
     } catch (e) {
       console.error("handleBook error:", e);
     }
