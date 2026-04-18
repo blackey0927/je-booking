@@ -51,13 +51,14 @@ const DEFAULT_SERVICES = [
   { id:"perm",       zh:"燙髮",     en:"Perm",             icon:"〰",  duration:480, price:"$600",  priceNote:"起", category:"技術", color:"#c8a97e", desc:"熱塑燙、冷燙、巴西燙等多種選擇" },
   { id:"color",      zh:"染髮",     en:"Hair Color",       icon:"🎨", duration:150, price:"$500",  priceNote:"起", category:"技術", color:"#b8a0c4", desc:"全染、挑染、補染髮根" },
   { id:"treatment",  zh:"護髮",     en:"Treatment",        icon:"✨", duration:30,  price:"$500",  priceNote:"起", category:"養護", color:"#c4a0a0", desc:"深層修護、蛋白質補充、光澤修復" },
+  { id:"id_photo",   zh:"證件照拍攝", en:"ID Photo",         icon:"📸", duration:30,  price:"",      priceNote:"",  category:"特殊", color:"#7a9aaa", desc:"專業證件照拍攝，限 16:00 後預約，獻爸專項服務" },
 ];
 let SERVICES = DEFAULT_SERVICES; // overridden dynamically
 
 const DEFAULT_STYLISTS = [
   {
     id:"ken",    name:"獻爸",  title:"院長・技術總監", photo:null,
-    icon:"👨‍🦱", exp:"10年",   specialty:["一般沖洗","精緻洗髮","SPA洗","護髮"],
+    icon:"👨‍🦱", exp:"10年",   specialty:["一般沖洗","精緻洗髮","SPA洗","護髮","證件照拍攝"],
     color:"#c4835a", bio:"20年精湛技藝，擅長男士精緻剪裁與女士創意造型，每位客人都是藝術作品。",
     workDays:[1,2,3,4,5,6],
   },
@@ -786,6 +787,8 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
       if (slotMins + totalDuration > dh.close) return false;
       // Block past slots for today (add 15min buffer)
       if (isToday && slotMins < nowMins + 15) return false;
+      // 證件照拍攝限 16:00 後 (960分鐘)
+      if (sel.services && sel.services.includes("id_photo") && slotMins < 960) return false;
       return isSlotAvailable(slot, sel.stylist, sel.date, bookings, totalDuration);
     });
   }, [sel.stylist, sel.date, sel.services, bookings, totalDuration]);
