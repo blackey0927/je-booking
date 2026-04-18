@@ -1042,7 +1042,28 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
           {[
             ["姓名 *", "name", "text", "您的姓名", true],
             ["電話 *", "phone", "tel", "聯絡電話", true],
-            ["LINE ID", "lineId", "text", "@您的LINE ID（選填，用於接收預約通知）", false],
+          ].map(([label,key,type,ph,req])=>(
+            <div key={key} style={{ marginBottom:".75rem" }}>
+              <label className="field-label">{label}</label>
+              <input type={type} placeholder={ph} value={form[key]} onChange={e=>setForm(p=>({...p,[key]:e.target.value}))}
+                className="field-input"
+              />
+            </div>
+          ))}
+          {/* LINE ID 欄位＋取得說明 */}
+          <div style={{ marginBottom:".75rem" }}>
+            <label className="field-label">LINE ID（選填，用於接收預約通知）</label>
+            <input type="text" placeholder="U 開頭的 userId，例如：Uab12cd34ef56..." value={form.lineId}
+              onChange={e=>setForm(p=>({...p,lineId:e.target.value}))} className="field-input"/>
+            <div style={{ marginTop:".4rem", padding:".5rem .75rem", background:"rgba(6,199,85,.06)", border:"1px solid rgba(6,199,85,.2)", borderRadius:6, fontSize:".76rem", color:"#3a7a50", lineHeight:1.7 }}>
+              💬 如何取得？請先加入官方帳號&nbsp;
+              <a href={`https://line.me/R/ti/p/${SALON.lineOaId}`} target="_blank" rel="noreferrer"
+                style={{ color:"#06C755", fontWeight:600, textDecoration:"none" }}>{SALON.lineOaId}</a>
+              ，然後在聊天室傳送「<b>查詢我的預約</b>」，bot 會自動回覆您的 userId（U 開頭 33 碼），複製後填入此欄即可收到通知。
+            </div>
+          </div>
+          {/* 備注欄位 */}
+          {[
             ["備注", "notes", "text", "特殊需求或備注（可留空）", false],
           ].map(([label,key,type,ph,req])=>(
             <div key={key} style={{ marginBottom:".75rem" }}>
@@ -1239,7 +1260,13 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
           </div>
           <div>
             <label className="field-label">LINE ID（選填）</label>
-            <input value={form.lineId} onChange={e=>setForm(p=>({...p,lineId:e.target.value}))} placeholder="@lineID" className="field-input"/>
+            <input value={form.lineId} onChange={e=>setForm(p=>({...p,lineId:e.target.value}))} placeholder="U 開頭的 userId，例如：Uab12cd34ef56..." className="field-input"/>
+            <div style={{ marginTop:".35rem", padding:".45rem .7rem", background:"rgba(6,199,85,.06)", border:"1px solid rgba(6,199,85,.2)", borderRadius:6, fontSize:".74rem", color:"#3a7a50", lineHeight:1.65 }}>
+              💬 需填入 U 開頭的 userId 才可推播通知。引導顧客加入&nbsp;
+              <a href={`https://line.me/R/ti/p/${SALON.lineOaId}`} target="_blank" rel="noreferrer"
+                style={{ color:"#06C755", fontWeight:600, textDecoration:"none" }}>{SALON.lineOaId}</a>
+              ，傳送「<b>查詢我的預約</b>」即可取得。
+            </div>
           </div>
           <div>
             <label className="field-label">備注</label>
