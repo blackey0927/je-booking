@@ -53,25 +53,25 @@ let SERVICES = DEFAULT_SERVICES; // overridden dynamically
 const DEFAULT_STYLISTS = [
   {
     id:"ken",    name:"獻爸",  title:"院長・技術總監", photo:null,
-    icon:"👨‍🦱", exp:"10年",   specialty:["剪髮","燙髮","染髮","SPA洗","護髮","洗髮"],
+    icon:"👨‍🦱", exp:"10年",   specialty:["洗髮","SPA洗","護髮"],
     color:"#c4835a", bio:"20年精湛技藝，擅長男士精緻剪裁與女士創意造型，每位客人都是藝術作品。",
     workDays:[1,2,3,4,5,6], // Mon-Sat (0=Sun)
   },
   {
     id:"mei",    name:"闆娘",  title:"染髮專師", photo:null,
-    icon:"👩‍🦰", exp:"20年",    specialty:["染髮","護髮","洗髮","剪髮"],
+    icon:"👩‍🦰", exp:"20年",    specialty:["剪髮","洗髮","SPA洗","燙髮","染髮","護髮"],
     color:"#b8a0c4", bio:"色彩魔法師，精通日系霧感色、歐美挑染與各式漸層染色技術。",
     workDays:[2,3,4,5,6,0],
   },
   {
     id:"kai",    name:"Nancy",  title:"剪髮設計師", photo:null,
-    icon:"👨‍🎨", exp:"6年",    specialty:["剪髮","SPA洗","洗髮"],
+    icon:"👨‍🎨", exp:"6年",    specialty:["剪髮","洗髮","SPA洗","燙髮","染髮","護髮"],
     color:"#a0c4b8", bio:"刀工精準俐落，男士 Fade 刀法專家，也擅長女士俐落短髮造型。",
     workDays:[1,3,4,5,6,0],
   },
   {
     id:"yu",     name:"Blackey",  title:"燙髮・護髮師", photo:null,
-    icon:"👩‍🦱", exp:"5年",    specialty:["燙髮","護髮","染髮","SPA洗","洗髮"],
+    icon:"👩‍🦱", exp:"5年",    specialty:["洗髮","SPA洗","染髮","護髮"],
     color:"#c4a0a0", bio:"燙髮技術扎實，護髮療程細心，讓每位客人的頭髮健康又有光澤。",
     workDays:[1,2,4,5,6,0],
   },
