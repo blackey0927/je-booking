@@ -413,7 +413,8 @@ function useLINESettings() {
 async function sendLINENotify({ webhookUrl, type, booking, svc, stylist }) {
   if (!webhookUrl) return { ok:false, msg:"未設定 Webhook URL" };
   try {
-    const res = await fetch(`${webhookUrl}/notify`, {
+    const notifyUrl = webhookUrl.replace(/\/notify\/?$/, '') + '/notify';
+    const res = await fetch(notifyUrl, {
       method:"POST",
       headers:{ "Content-Type":"application/json" },
       body: JSON.stringify({ type, booking, svcName:svc?.zh, stylistName:stylist?.name,
