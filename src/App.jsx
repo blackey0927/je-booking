@@ -210,38 +210,147 @@ const PHOTO_DEFAULTS = {
 /* ═══════════════════════════════════════════════════════════
    STORAGE HOOK
 ═══════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════
+   FIREBASE CONFIG  ← 填入你的 Firebase 專案資料
+   步驟：
+   1. 前往 https://console.firebase.google.com 建立專案
+   2. 新增 Web App，複製 firebaseConfig 物件
+   3. 啟用 Realtime Database（選 asia-east1 或 us-central1）
+   4. Database 規則暫設為允許讀寫（測試用）：
+      { "rules": { ".read": true, ".write": true } }
+═══════════════════════════════════════════════════════════ */
+const FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyDJBAU3lbT0r15eKN3iCuWQ0a1Hk9pq3WY",
+  authDomain:        "je-booking.firebaseapp.com",
+  databaseURL:       "https://je-booking-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:         "je-booking",
+  storageBucket:     "je-booking.firebasestorage.app",
+  messagingSenderId: "336138875920",
+  appId:             "1:336138875920:web:feded62fcee81f322f4695",
+  measurementId:     "G-TYWTMHRWC5",
+};
+const FIREBASE_READY = !FIREBASE_CONFIG.apiKey.startsWith("YOUR_");
+
+let _firebaseDB   = null;
+let _fbLoading    = false;
+let _fbCallbacks  = [];
+
+async function getFirebaseDB() {
+  if (_firebaseDB) return _firebaseDB;
+  if (!FIREBASE_READY) return null;
+  if (_fbLoading) return new Promise(r => _fbCallbacks.push(r));
+  _fbLoading = true;
+  try {
+    const [{ initializeApp, getApps }, { getDatabase }] = await Promise.all([
+      import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"),
+      import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js"),
+    ]);
+    const app = getApps().length === 0 ? initializeApp(FIREBASE_CONFIG) : getApps()[0];
+    _firebaseDB = getDatabase(app);
+    _fbCallbacks.forEach(r => r(_firebaseDB));
+    _fbCallbacks = [];
+    return _firebaseDB;
+  } catch (e) {
+    console.warn("Firebase 初始化失敗，使用本機備援:", e.message);
+    _fbCallbacks.forEach(r => r(null));
+    _fbCallbacks = [];
+    return null;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   useBookings — Firebase Realtime Database（跨裝置即時同步）
+   未設定 Firebase 時自動降級使用 localStorage
+═══════════════════════════════════════════════════════════ */
 function useBookings() {
   const [bookings, setBookings] = useState([]);
   const [loaded, setLoaded]     = useState(false);
+  const [fbReady, setFbReady]   = useState(false);
 
+  // ── 初始化：嘗試連接 Firebase，否則用 localStorage ──
   useEffect(() => {
+    let unsub = null;
+
     (async () => {
-      try {
-        const res = await window.storage.get("je_bookings");
-        if (res?.value) setBookings(JSON.parse(res.value));
-      } catch (_) {}
-      setLoaded(true);
+      const db = await getFirebaseDB();
+
+      if (db) {
+        // Firebase 模式：即時監聽
+        const { ref, onValue } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
+        const dbRef = ref(db, "je_bookings");
+        unsub = onValue(dbRef, (snapshot) => {
+          const val = snapshot.val();
+          const arr = val
+            ? Object.values(val).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+            : [];
+          setBookings(arr);
+          setFbReady(true);
+          setLoaded(true);
+        }, (err) => {
+          console.warn("Firebase 讀取失敗:", err.message);
+          setLoaded(true);
+        });
+      } else {
+        // 本機備援模式
+        try {
+          const res = await window.storage.get("je_bookings");
+          if (res?.value) setBookings(JSON.parse(res.value));
+        } catch (_) {}
+        setLoaded(true);
+      }
     })();
+
+    return () => { if (typeof unsub === "function") unsub(); };
   }, []);
 
-  // persist helper — always reads freshest state via functional update
-  const persist = useCallback((updater) => {
-    setBookings(prev => {
-      const next = typeof updater === "function" ? updater(prev) : updater;
-      try {
-        if (window.storage) {
-          window.storage.set("je_bookings", JSON.stringify(next)).catch(() => {});
-        }
-      } catch (_) {}
-      return next;
-    });
+  // ── 新增預約 ──
+  const addBooking = useCallback(async (b) => {
+    const booking = { ...b, id: genId(), status: "pending", createdAt: new Date().toISOString() };
+    const db = await getFirebaseDB();
+    if (db) {
+      const { ref, set } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
+      await set(ref(db, `je_bookings/${booking.id}`), booking);
+      // Firebase onValue 會自動更新 state，不需手動 setBookings
+    } else {
+      setBookings(prev => {
+        const next = [...prev, booking];
+        window.storage?.set("je_bookings", JSON.stringify(next)).catch(() => {});
+        return next;
+      });
+    }
   }, []);
 
-  const addBooking    = useCallback((b)         => persist(prev => [...prev, { ...b, id: genId(), status:"pending", createdAt: new Date().toISOString() }]), [persist]);
-  const updateStatus  = useCallback((id, status) => persist(prev => prev.map(b => b.id === id ? { ...b, status } : b)), [persist]);
-  const deleteBooking = useCallback((id)         => persist(prev => prev.filter(b => b.id !== id)), [persist]);
+  // ── 更新狀態 ──
+  const updateStatus = useCallback(async (id, status) => {
+    const db = await getFirebaseDB();
+    if (db) {
+      const { ref, update } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
+      await update(ref(db, `je_bookings/${id}`), { status });
+    } else {
+      setBookings(prev => {
+        const next = prev.map(b => b.id === id ? { ...b, status } : b);
+        window.storage?.set("je_bookings", JSON.stringify(next)).catch(() => {});
+        return next;
+      });
+    }
+  }, []);
 
-  return { bookings, loaded, addBooking, updateStatus, deleteBooking };
+  // ── 刪除預約 ──
+  const deleteBooking = useCallback(async (id) => {
+    const db = await getFirebaseDB();
+    if (db) {
+      const { ref, remove } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
+      await remove(ref(db, `je_bookings/${id}`));
+    } else {
+      setBookings(prev => {
+        const next = prev.filter(b => b.id !== id);
+        window.storage?.set("je_bookings", JSON.stringify(next)).catch(() => {});
+        return next;
+      });
+    }
+  }, []);
+
+  return { bookings, loaded, fbReady, addBooking, updateStatus, deleteBooking };
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -2377,7 +2486,7 @@ const TABS = [
 export default function SalonApp() {
   const [tab, setTab]               = useState("book");
   const [isMobile, setIsMobile]     = useState(() => window.innerWidth < 640);
-  const { bookings, loaded, addBooking, updateStatus, deleteBooking } = useBookings();
+  const { bookings, loaded, fbReady, addBooking, updateStatus, deleteBooking } = useBookings();
   const { settings: lineSettings, save: saveLineSettings } = useLINESettings();
   const stylistMgr   = useStylistSettings();
   const salonConfig  = useSalonSettings();
@@ -2557,6 +2666,14 @@ export default function SalonApp() {
           {/* Stats */}
           <div style={{ display:"flex", gap:".5rem", alignItems:"center" }}>
             <AdminSecretEntry onEnter={()=>setTab("calendar")} adminAuth={adminAuth} isMobile={isMobile} todayCount={todayBookings.length} pendingCount={pendingCount}/>
+            {/* Firebase 連線狀態 */}
+            <div title={FIREBASE_READY ? (fbReady ? "雲端同步正常" : "連線中…") : "未設定 Firebase（本機模式）"}
+              style={{ width:28, height:28, borderRadius:"50%", background: FIREBASE_READY ? (fbReady?"rgba(99,179,237,.15)":"rgba(200,200,200,.2)") : "rgba(196,188,154,.1)", border:`1px solid ${FIREBASE_READY?(fbReady?"rgba(99,179,237,.5)":"rgba(180,180,180,.4)"):"rgba(196,188,154,.3)"}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:".7rem" }}>
+              {FIREBASE_READY
+                ? <span style={{ width:7, height:7, borderRadius:"50%", background: fbReady?"#63b3ed":"#ccc", display:"inline-block", animation: fbReady?"none":"pulse 1.5s infinite" }}/>
+                : <span style={{ color:"#c4bc9a", fontSize:"10px" }}>☁</span>
+              }
+            </div>
             {lineSettings?.webhookUrl && (
               <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(6,199,85,.1)", border:"1px solid rgba(6,199,85,.3)", display:"flex", alignItems:"center", justifyContent:"center" }}>
                 <span style={{ width:7, height:7, borderRadius:"50%", background:"#06C755", display:"inline-block" }}/>
