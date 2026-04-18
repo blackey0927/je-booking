@@ -548,7 +548,25 @@ function useStylists() {
 
   useEffect(() => {
     return fbListen("je_stylists", val => {
-      if (Array.isArray(val) && val.length > 0) setStylists(val);
+      if (Array.isArray(val) && val.length > 0) {
+        // Migrate specialty: rename old service names → current names
+        const nameMap = { "洗髮": ["一般沖洗","精緻洗髮"] };
+        let changed = false;
+        const updated = val.map(st => {
+          if (!st.specialty) return st;
+          let spec = [...st.specialty];
+          Object.entries(nameMap).forEach(([oldName, newNames]) => {
+            const idx = spec.indexOf(oldName);
+            if (idx !== -1) {
+              spec.splice(idx, 1, ...newNames.filter(n => !spec.includes(n)));
+              changed = true;
+            }
+          });
+          return changed ? { ...st, specialty: spec } : st;
+        });
+        setStylists(updated);
+        if (changed) fbWrite("je_stylists", updated);
+      }
       setLoaded(true);
     });
   }, []);
@@ -571,14 +589,21 @@ function useServices() {
   useEffect(() => {
     return fbListen("je_services", val => {
       if (Array.isArray(val) && val.length > 0) {
-        // Merge: keep stored edits, but add any NEW default services not yet in storage
-        const storedIds = new Set(val.map(s => s.id));
+        // Build id→default map for name sync
+        const defaultMap = Object.fromEntries(DEFAULT_SERVICES.map(s => [s.id, s]));
+        // Sync zh name: if stored service name differs from default, update to default name
+        let needsWrite = false;
+        const synced = val.map(s => {
+          const def = defaultMap[s.id];
+          if (def && def.zh !== s.zh) { needsWrite = true; return { ...s, zh: def.zh }; }
+          return s;
+        });
+        // Add new default services not yet in storage
+        const storedIds = new Set(synced.map(s => s.id));
         const newDefaults = DEFAULT_SERVICES.filter(s => !storedIds.has(s.id));
-        const merged = newDefaults.length > 0 ? [...val, ...newDefaults] : val;
-        // Also remove services that no longer exist in storage (user deleted them)
+        const merged = newDefaults.length > 0 ? [...synced, ...newDefaults] : synced;
         setServices(merged);
-        // If we added new defaults, persist the merged list
-        if (newDefaults.length > 0) fbWrite("je_services", merged);
+        if (needsWrite || newDefaults.length > 0) fbWrite("je_services", merged);
       }
     });
   }, []);
