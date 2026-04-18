@@ -570,7 +570,16 @@ function useServices() {
 
   useEffect(() => {
     return fbListen("je_services", val => {
-      if (Array.isArray(val) && val.length > 0) setServices(val);
+      if (Array.isArray(val) && val.length > 0) {
+        // Merge: keep stored edits, but add any NEW default services not yet in storage
+        const storedIds = new Set(val.map(s => s.id));
+        const newDefaults = DEFAULT_SERVICES.filter(s => !storedIds.has(s.id));
+        const merged = newDefaults.length > 0 ? [...val, ...newDefaults] : val;
+        // Also remove services that no longer exist in storage (user deleted them)
+        setServices(merged);
+        // If we added new defaults, persist the merged list
+        if (newDefaults.length > 0) fbWrite("je_services", merged);
+      }
     });
   }, []);
 
