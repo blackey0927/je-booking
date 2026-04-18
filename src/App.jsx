@@ -44,39 +44,37 @@ const DEFAULT_SERVICES = [
   { id:"cut_male",   zh:"男子剪髮", en:"Men's Haircut",    icon:"✂️", duration:15,  price:"$180",  priceNote:"",   category:"基本", color:"#a0c4b8", desc:"男士精緻剪裁，Fade 刀法、造型設計" },
   { id:"cut_female", zh:"女子剪髮", en:"Women's Haircut",  icon:"✂️", duration:20,  price:"$230",  priceNote:"起", category:"基本", color:"#a0c4b8", desc:"量身剪裁，依臉形與需求設計造型" },
   { id:"cut_bang",   zh:"修瀏海",   en:"Bang Trim",        icon:"✂️", duration:10,  price:"$80",   priceNote:"",   category:"基本", color:"#a0c4b8", desc:"快速修剪瀏海，保持清爽俐落" },
-  { id:"rinse",      zh:"一般沖洗",  en:"Basic Rinse",      icon:"🚿", duration:10,  price:"$80",   priceNote:"",   category:"基本", color:"#7a9aaa", desc:"快速清潔，適合日常護理" },
-  { id:"shampoo",    zh:"精緻洗髮",  en:"Premium Shampoo",  icon:"🛁", duration:20,  price:"$150",  priceNote:"",   category:"基本", color:"#7a9aaa", desc:"精油頭皮按摩、深層清潔、舒壓護理" },
+  { id:"shampoo",    zh:"洗髮",     en:"Shampoo",          icon:"🚿", duration:15,  price:"$100",  priceNote:"",   category:"基本", color:"#7a9aaa", desc:"深層清潔頭皮，舒壓按摩洗髮" },
   { id:"eyebrow",    zh:"修眉",     en:"Eyebrow Trim",     icon:"💅", duration:10,  price:"$50",   priceNote:"",   category:"基本", color:"#c4bc9a", desc:"修整眉型，讓五官更立體精緻" },
   { id:"spa",        zh:"SPA洗",    en:"SPA Wash",         icon:"🐱", duration:30,  price:"$300",  priceNote:"",   category:"技術", color:"#c4bc9a", desc:"精油頭皮按摩洗髮" },
   { id:"perm",       zh:"燙髮",     en:"Perm",             icon:"〰",  duration:480, price:"$600",  priceNote:"起", category:"技術", color:"#c8a97e", desc:"熱塑燙、冷燙、巴西燙等多種選擇" },
   { id:"color",      zh:"染髮",     en:"Hair Color",       icon:"🎨", duration:150, price:"$500",  priceNote:"起", category:"技術", color:"#b8a0c4", desc:"全染、挑染、補染髮根" },
   { id:"treatment",  zh:"護髮",     en:"Treatment",        icon:"✨", duration:30,  price:"$500",  priceNote:"起", category:"養護", color:"#c4a0a0", desc:"深層修護、蛋白質補充、光澤修復" },
-  { id:"id_photo",   zh:"證件照拍攝", en:"ID Photo",         icon:"📸", duration:30,  price:"",      priceNote:"",  category:"特殊", color:"#7a9aaa", desc:"專業證件照拍攝，限 16:00 後預約，獻爸專項服務" },
 ];
 let SERVICES = DEFAULT_SERVICES; // overridden dynamically
 
 const DEFAULT_STYLISTS = [
   {
     id:"ken",    name:"獻爸",  title:"院長・技術總監", photo:null,
-    icon:"👨‍🦱", exp:"10年",   specialty:["一般沖洗","精緻洗髮","SPA洗","護髮","證件照拍攝"],
+    icon:"👨‍🦱", exp:"10年",   specialty:["洗髮","SPA洗","護髮"],
     color:"#c4835a", bio:"20年精湛技藝，擅長男士精緻剪裁與女士創意造型，每位客人都是藝術作品。",
     workDays:[1,2,3,4,5,6],
   },
   {
     id:"mei",    name:"闆娘",  title:"染髮專師", photo:null,
-    icon:"👩‍🦰", exp:"20年",   specialty:["男子剪髮","女子剪髮","修瀏海","修眉","一般沖洗","精緻洗髮","SPA洗","燙髮","染髮","護髮"],
+    icon:"👩‍🦰", exp:"20年",   specialty:["男子剪髮","女子剪髮","修瀏海","修眉","洗髮","SPA洗","燙髮","染髮","護髮"],
     color:"#b8a0c4", bio:"色彩魔法師，精通日系霧感色、歐美挑染與各式漸層染色技術。",
     workDays:[2,3,4,5,6,0],
   },
   {
     id:"kai",    name:"Nancy",  title:"剪髮設計師", photo:null,
-    icon:"👨‍🎨", exp:"6年",    specialty:["男子剪髮","女子剪髮","修瀏海","修眉","一般沖洗","精緻洗髮","SPA洗","燙髮","染髮","護髮"],
+    icon:"👨‍🎨", exp:"6年",    specialty:["男子剪髮","女子剪髮","修瀏海","修眉","洗髮","SPA洗","燙髮","染髮","護髮"],
     color:"#a0c4b8", bio:"刀工精準俐落，男士 Fade 刀法專家，也擅長女士俐落短髮造型。",
     workDays:[1,3,4,5,6,0],
   },
   {
     id:"yu",     name:"Blackey",  title:"燙髮・護髮師", photo:null,
-    icon:"👩‍🦱", exp:"5年",    specialty:["一般沖洗","精緻洗髮","SPA洗","染髮","護髮"],
+    icon:"👩‍🦱", exp:"5年",    specialty:["洗髮","SPA洗","染髮","護髮"],
     color:"#c4a0a0", bio:"燙髮技術扎實，護髮療程細心，讓每位客人的頭髮健康又有光澤。",
     workDays:[1,2,4,5,6,0],
   },
@@ -381,7 +379,12 @@ function fbListen(path, onData) {
     } else {
       try {
         const res = await window.storage?.get(path.replace(/\//g,"_"));
-        onData(res?.value ? JSON.parse(res.value) : null);
+        if (res?.value) {
+          try { onData(JSON.parse(res.value)); }
+          catch(_) { onData(null); } // 非 JSON 格式，忽略舊資料
+        } else {
+          onData(null);
+        }
       } catch(_) { onData(null); }
     }
   })();
@@ -548,25 +551,7 @@ function useStylists() {
 
   useEffect(() => {
     return fbListen("je_stylists", val => {
-      if (Array.isArray(val) && val.length > 0) {
-        // Migrate specialty: rename old service names → current names
-        const nameMap = { "洗髮": ["一般沖洗","精緻洗髮"] };
-        let changed = false;
-        const updated = val.map(st => {
-          if (!st.specialty) return st;
-          let spec = [...st.specialty];
-          Object.entries(nameMap).forEach(([oldName, newNames]) => {
-            const idx = spec.indexOf(oldName);
-            if (idx !== -1) {
-              spec.splice(idx, 1, ...newNames.filter(n => !spec.includes(n)));
-              changed = true;
-            }
-          });
-          return changed ? { ...st, specialty: spec } : st;
-        });
-        setStylists(updated);
-        if (changed) fbWrite("je_stylists", updated);
-      }
+      if (Array.isArray(val) && val.length > 0) setStylists(val);
       setLoaded(true);
     });
   }, []);
@@ -588,23 +573,7 @@ function useServices() {
 
   useEffect(() => {
     return fbListen("je_services", val => {
-      if (Array.isArray(val) && val.length > 0) {
-        // Build id→default map for name sync
-        const defaultMap = Object.fromEntries(DEFAULT_SERVICES.map(s => [s.id, s]));
-        // Sync zh name: if stored service name differs from default, update to default name
-        let needsWrite = false;
-        const synced = val.map(s => {
-          const def = defaultMap[s.id];
-          if (def && def.zh !== s.zh) { needsWrite = true; return { ...s, zh: def.zh }; }
-          return s;
-        });
-        // Add new default services not yet in storage
-        const storedIds = new Set(synced.map(s => s.id));
-        const newDefaults = DEFAULT_SERVICES.filter(s => !storedIds.has(s.id));
-        const merged = newDefaults.length > 0 ? [...synced, ...newDefaults] : synced;
-        setServices(merged);
-        if (needsWrite || newDefaults.length > 0) fbWrite("je_services", merged);
-      }
+      if (Array.isArray(val) && val.length > 0) setServices(val);
     });
   }, []);
 
@@ -821,8 +790,6 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
       if (slotMins + totalDuration > dh.close) return false;
       // Block past slots for today (add 15min buffer)
       if (isToday && slotMins < nowMins + 15) return false;
-      // 證件照拍攝限 16:00 後 (960分鐘)
-      if (sel.services && sel.services.includes("id_photo") && slotMins < 960) return false;
       return isSlotAvailable(slot, sel.stylist, sel.date, bookings, totalDuration);
     });
   }, [sel.stylist, sel.date, sel.services, bookings, totalDuration]);
