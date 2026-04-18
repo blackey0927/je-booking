@@ -356,25 +356,51 @@ function useBookings() {
 /* ═══════════════════════════════════════════════════════════
    LINE SETTINGS HOOK
 ═══════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════
+   FIREBASE SYNC HELPERS（所有 Hook 共用）
+═══════════════════════════════════════════════════════════ */
+async function fbWrite(path, data) {
+  const db = await getFirebaseDB();
+  if (db) {
+    const { ref, set } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
+    try { await set(ref(db, path), data); } catch(e) { console.warn("fbWrite:", e.message); }
+  } else {
+    try { await window.storage?.set(path.replace(/\//g,"_"), JSON.stringify(data)); } catch(_) {}
+  }
+}
+
+function fbListen(path, onData) {
+  const unsubRef = { current: null };
+  (async () => {
+    const db = await getFirebaseDB();
+    if (db) {
+      const { ref, onValue } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
+      unsubRef.current = onValue(ref(db, path), snap => onData(snap.val()), () => onData(null));
+    } else {
+      try {
+        const res = await window.storage?.get(path.replace(/\//g,"_"));
+        onData(res?.value ? JSON.parse(res.value) : null);
+      } catch(_) { onData(null); }
+    }
+  })();
+  return () => { if (typeof unsubRef.current === "function") unsubRef.current(); };
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LINE SETTINGS HOOK
+═══════════════════════════════════════════════════════════ */
 function useLINESettings() {
   const [settings, setSettings] = useState({ webhookUrl:"", token:"", ownerNotify:true });
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await window.storage.get("je_line_settings");
-        if (res?.value) setSettings(JSON.parse(res.value));
-      } catch(_) {}
+    return fbListen("je_line_settings", val => {
+      if (val) setSettings(val);
       setLoaded(true);
-    })();
+    });
   }, []);
 
-  const save = async (next) => {
-    setSettings(next);
-    try { await window.storage.set("je_line_settings", JSON.stringify(next)); } catch(_) {}
-  };
-
+  const save = (next) => { setSettings(next); fbWrite("je_line_settings", next); };
   return { settings, loaded, save };
 }
 
@@ -403,46 +429,51 @@ function useStylistSettings() {
   const [settings, setSettings] = useState({});
   const [photosLoaded, setPhotosLoaded] = useState(false);
 
-  // Load: photos stored separately (avoid 5MB limit), schedule in main key
   useEffect(() => {
-    (async () => {
-      try {
-        // Load schedule settings
-        const res = await window.storage.get("je_stylist_sched");
-        const sched = res?.value ? JSON.parse(res.value) : {};
-        // Load photos per stylist
-        const photoMap = {};
-        for (const st of DEFAULT_STYLISTS) {
-          try {
-            const pr = await window.storage.get("je_photo_" + st.id);
-            if (pr?.value) photoMap[st.id] = pr.value;
-          } catch (_) {}
-        }
-        // Merge
+    const unsubSched = fbListen("je_stylist_sched", sched => {
+      setSettings(prev => {
         const merged = {};
         for (const st of DEFAULT_STYLISTS) {
-          merged[st.id] = { ...(sched[st.id]||{}), photo: photoMap[st.id] || PHOTO_DEFAULTS[st.id] || null };
+          merged[st.id] = { ...(sched?.[st.id]||{}), photo: prev[st.id]?.photo || PHOTO_DEFAULTS[st.id] || null };
         }
-        setSettings(merged);
-      } catch (_) {}
+        return merged;
+      });
+    });
+
+    const unsubPhotos = fbListen("je_stylist_photos", photos => {
+      setSettings(prev => {
+        const merged = { ...prev };
+        for (const st of DEFAULT_STYLISTS) {
+          merged[st.id] = { ...(merged[st.id]||{}), photo: photos?.[st.id] || PHOTO_DEFAULTS[st.id] || null };
+        }
+        return merged;
+      });
       setPhotosLoaded(true);
-    })();
+    });
+
+    return () => { unsubSched(); unsubPhotos(); };
   }, []);
 
-  // Save schedule (no photos in this key)
-  const saveSchedule = async (next) => {
+  const saveSchedule = (next) => {
     const schedOnly = {};
     for (const id of Object.keys(next)) {
       const { photo: _p, ...rest } = next[id] || {};
       schedOnly[id] = rest;
     }
-    try { await window.storage.set("je_stylist_sched", JSON.stringify(schedOnly)); } catch (_) {}
+    fbWrite("je_stylist_sched", schedOnly);
   };
 
   const setPhoto = async (id, dataUrl) => {
     const compressed = await compressImage(dataUrl, 400, 0.75);
-    try { await window.storage.set("je_photo_" + id, compressed); } catch (_) {}
     setSettings(prev => ({ ...prev, [id]: { ...(prev[id]||{}), photo: compressed } }));
+    const db = await getFirebaseDB();
+    if (db) {
+      const { ref, get, set } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
+      const snap = await get(ref(db, "je_stylist_photos"));
+      await set(ref(db, "je_stylist_photos"), { ...(snap.val()||{}), [id]: compressed });
+    } else {
+      try { await window.storage?.set("je_photo_" + id, compressed); } catch(_) {}
+    }
   };
 
   const setWorkDays = (id, days) => {
@@ -489,26 +520,19 @@ function useSalonSettings() {
   const [loaded, setLoaded]  = useState(false);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await window.storage.get("je_salon_logo");
-        if (res?.value) setLogoState(res.value);
-        else setLogoState(PHOTO_DEFAULTS.logo);
-      } catch (_) { setLogoState(PHOTO_DEFAULTS.logo); }
+    return fbListen("je_salon_logo", val => {
+      setLogoState(val || PHOTO_DEFAULTS.logo || null);
       setLoaded(true);
-    })();
+    });
   }, []);
 
   const setLogo = async (dataUrl) => {
     const compressed = await compressImage(dataUrl, 300, 0.8);
     setLogoState(compressed);
-    try { await window.storage.set("je_salon_logo", compressed); } catch (_) {}
+    fbWrite("je_salon_logo", compressed);
   };
 
-  const removeLogo = async () => {
-    setLogoState(null);
-    try { await window.storage.delete("je_salon_logo"); } catch (_) {}
-  };
+  const removeLogo = () => { setLogoState(null); fbWrite("je_salon_logo", null); };
 
   return { logo, loaded, setLogo, removeLogo };
 }
@@ -521,59 +545,38 @@ function useStylists() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await window.storage.get("je_stylists");
-        if (res?.value) {
-          const stored = JSON.parse(res.value);
-          if (Array.isArray(stored) && stored.length > 0) setStylists(stored);
-        }
-      } catch (_) {}
+    return fbListen("je_stylists", val => {
+      if (Array.isArray(val) && val.length > 0) setStylists(val);
       setLoaded(true);
-    })();
+    });
   }, []);
 
-  const save = async (next) => {
-    setStylists(next);
-    try { await window.storage.set("je_stylists", JSON.stringify(next)); } catch (_) {}
-  };
+  const save = (next) => { setStylists(next); fbWrite("je_stylists", next); };
 
-  const addStylist = (stylist) => save([...stylists, { ...stylist, id: "st_" + Date.now() }]);
-
-  const deleteStylist = (id) => save(stylists.filter(s => s.id !== id));
-
-  const updateStylist = (id, patch) => save(stylists.map(s => s.id === id ? { ...s, ...patch } : s));
+  const addStylist    = (s)        => save([...stylists, { ...s, id: "st_" + Date.now() }]);
+  const deleteStylist = (id)       => save(stylists.filter(s => s.id !== id));
+  const updateStylist = (id, patch)=> save(stylists.map(s => s.id === id ? { ...s, ...patch } : s));
 
   return { stylists, loaded, addStylist, deleteStylist, updateStylist };
 }
 
 /* ═══════════════════════════════════════════════════════════
-   DYNAMIC SERVICES HOOK (editable pricing & duration)
+   DYNAMIC SERVICES HOOK
 ═══════════════════════════════════════════════════════════ */
 function useServices() {
   const [services, setServices] = useState(DEFAULT_SERVICES);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await window.storage.get("je_services");
-        if (res?.value) {
-          const stored = JSON.parse(res.value);
-          if (Array.isArray(stored) && stored.length > 0) setServices(stored);
-        }
-      } catch (_) {}
-    })();
+    return fbListen("je_services", val => {
+      if (Array.isArray(val) && val.length > 0) setServices(val);
+    });
   }, []);
 
-  const save = async (next) => {
-    setServices(next);
-    try { await window.storage.set("je_services", JSON.stringify(next)); } catch (_) {}
-  };
+  const save = (next) => { setServices(next); fbWrite("je_services", next); };
 
   const updateService = (id, patch) => save(services.map(s => s.id === id ? { ...s, ...patch } : s));
-
-  const addService    = (svc)  => save([...services, svc]);
-  const deleteService = (id)   => save(services.filter(s => s.id !== id));
+  const addService    = (svc)        => save([...services, svc]);
+  const deleteService = (id)         => save(services.filter(s => s.id !== id));
 
   return { services, updateService, addService, deleteService };
 }
@@ -585,27 +588,15 @@ function useCustomers() {
   const [customers, setCustomers] = useState({});
 
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await window.storage.get("je_customers");
-        if (res?.value) setCustomers(JSON.parse(res.value));
-      } catch (_) {}
-    })();
+    return fbListen("je_customers", val => {
+      if (val && typeof val === "object") setCustomers(val);
+    });
   }, []);
 
-  const save = (next) => {
-    setCustomers(next);
-    try {
-      if (window.storage) window.storage.set("je_customers", JSON.stringify(next)).catch(()=>{});
-    } catch (_) {}
-  };
-
-  // Called on every successful booking
   const upsertFromBooking = (booking, svcName, stylistName) => {
     if (!booking || !booking.customerPhone) return;
     const key = booking.customerPhone.replace(/[-\s]/g, "");
-    // Capture price BEFORE entering state updater (avoid closure over mutable SERVICES)
-    const ids = (booking.serviceIds && booking.serviceIds.length > 0) ? booking.serviceIds : (booking.serviceId ? [booking.serviceId] : []);
+    const ids = (booking.serviceIds?.length > 0) ? booking.serviceIds : (booking.serviceId ? [booking.serviceId] : []);
     const price = ids.reduce((sum, id) => {
       const s = SERVICES.find(x => x.id === id) || DEFAULT_SERVICES.find(x => x.id === id);
       return sum + (s ? parseInt((s.price||"0").replace(/[^0-9]/g,""),10)||0 : 0);
@@ -613,28 +604,16 @@ function useCustomers() {
     setCustomers(prev => {
       const existing = prev[key] || { phone: booking.customerPhone, name: booking.customerName, lineId: booking.lineId||"", firstVisit: booking.date, visits: 0, totalSpend: 0, history: [] };
       const record = { date: booking.date, time: booking.time, service: svcName, stylist: stylistName, bookingId: booking.id || genId() };
-      const next = {
-        ...prev,
-        [key]: {
-          ...existing,
-          name:       booking.customerName,
-          lineId:     booking.lineId || existing.lineId || "",
-          lastVisit:  booking.date,
-          visits:     (existing.visits||0) + 1,
-          totalSpend: (existing.totalSpend||0) + price,
-          history:    [record, ...(existing.history||[])].slice(0,50),
-        }
-      };
-      save(next);
+      const next = { ...prev, [key]: { ...existing, name: booking.customerName, lineId: booking.lineId||existing.lineId||"", lastVisit: booking.date, visits: (existing.visits||0)+1, totalSpend: (existing.totalSpend||0)+price, history: [record,...(existing.history||[])].slice(0,50) } };
+      fbWrite("je_customers", next);
       return next;
     });
   };
 
   const deleteCustomer = (key) => {
     setCustomers(prev => {
-      const next = {...prev};
-      delete next[key];
-      save(next);
+      const next = {...prev}; delete next[key];
+      fbWrite("je_customers", next);
       return next;
     });
   };
@@ -646,30 +625,21 @@ function useCustomers() {
    ADMIN AUTH (PIN lock for management tabs)
 ═══════════════════════════════════════════════════════════ */
 const ADMIN_TABS = new Set(["calendar","schedule","stylists","customers","line"]);
-const DEFAULT_PIN = "0000"; // ← 預設密碼，可在 LINE 設定頁更改
+const DEFAULT_PIN = "0000";
 
 function useAdminAuth() {
   const [unlocked, setUnlocked] = useState(false);
   const [pin, setPin]           = useState(DEFAULT_PIN);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await window.storage.get("je_admin_pin");
-        if (res?.value) setPin(res.value);
-      } catch (_) {}
-    })();
+    return fbListen("je_admin_pin", val => {
+      if (val) setPin(val);
+    });
   }, []);
 
-  const unlock = (input) => {
-    if (input === pin) { setUnlocked(true); return true; }
-    return false;
-  };
-  const lock   = () => setUnlocked(false);
-  const changePin = async (newPin) => {
-    setPin(newPin);
-    try { await window.storage.set("je_admin_pin", newPin); } catch (_) {}
-  };
+  const unlock    = (input) => { if (input === pin) { setUnlocked(true); return true; } return false; };
+  const lock      = () => setUnlocked(false);
+  const changePin = (newPin) => { setPin(newPin); fbWrite("je_admin_pin", newPin); };
 
   return { unlocked, unlock, lock, pin, changePin };
 }
