@@ -41,8 +41,8 @@ const SALON = {
 };
 
 const DEFAULT_SERVICES = [
-  { id:"shampoo",   zh:"洗髮",    en:"Shampoo",      icon:"🚿", duration:15,  price:"$100",    priceNote:"",     category:"基本",  color:"#7a9aaa", desc:"深層清潔頭皮，舒壓按摩洗髮" },
   { id:"cut",       zh:"剪髮",    en:"Haircut",       icon:"✂️", duration:15,  price:"$180",    priceNote:"",     category:"基本",  color:"#a0c4b8", desc:"量身剪裁，依臉形與需求設計造型" },
+  { id:"shampoo",   zh:"洗髮",    en:"Shampoo",       icon:"🚿", duration:15,  price:"$100",    priceNote:"",     category:"基本",  color:"#7a9aaa", desc:"深層清潔頭皮，舒壓按摩洗髮" },
   { id:"spa",       zh:"SPA洗",   en:"SPA Wash",      icon:"🐱", duration:30,  price:"$300",    priceNote:"",     category:"技術",  color:"#c4bc9a", desc:"精油頭皮按摩洗髮" },
   { id:"perm",      zh:"燙髮",    en:"Perm",          icon:"〰",  duration:480, price:"$600",    priceNote:"起",   category:"技術",  color:"#c8a97e", desc:"熱塑燙、冷燙、巴西燙等多種選擇" },
   { id:"color",     zh:"染髮",    en:"Hair Color",    icon:"🎨", duration:150, price:"$500",    priceNote:"起",   category:"技術",  color:"#b8a0c4", desc:"全染、挑染、補染髮根" },
@@ -1608,15 +1608,23 @@ function StylistRoster({ bookings, isMobile, stylistMgr, stylistsMgr }) {
                   {isEditing ? "點擊切換專項服務" : "專項服務"}
                 </div>
                 <div style={{ display:"flex", flexWrap:"wrap", gap:".24rem" }}>
-                  {SERVICES.map(svc=>{
-                    const on = (st.specialty||[]).includes(svc.zh);
-                    return (
-                      <span key={svc.id} onClick={()=>isEditing&&handleEditSpecialty(svc.zh)}
-                        style={{ fontSize:".84rem", padding:".1rem .42rem", borderRadius:20, background:on?`rgba(${hexToRgb(st.color||"#c4835a")},.08)`:"rgba(0,0,0,.04)", color:on?st.color||"var(--copper)":"var(--ink4)", border:`1px solid ${on?`rgba(${hexToRgb(st.color||"#c4835a")},.2)`:"var(--line)"}`, cursor:isEditing?"pointer":"default", opacity:on||isEditing?1:.5, transition:"all .15s" }}>
-                        {svc.icon} {svc.zh}
-                      </span>
-                    );
-                  })}
+                  {isEditing
+                    ? SERVICES.map(svc=>{
+                        const on = (st.specialty||[]).includes(svc.zh);
+                        return (
+                          <span key={svc.id} onClick={()=>handleEditSpecialty(svc.zh)}
+                            style={{ fontSize:".84rem", padding:".1rem .42rem", borderRadius:20, background:on?`rgba(${hexToRgb(st.color||"#c4835a")},.08)`:"rgba(0,0,0,.04)", color:on?st.color||"var(--copper)":"var(--ink4)", border:`1px solid ${on?`rgba(${hexToRgb(st.color||"#c4835a")},.2)`:"var(--line)"}`, cursor:"pointer", opacity:on?1:.45, transition:"all .15s" }}>
+                            {svc.icon} {svc.zh}
+                          </span>
+                        );
+                      })
+                    : SERVICES.filter(svc=>(st.specialty||[]).includes(svc.zh)).map(svc=>(
+                        <span key={svc.id}
+                          style={{ fontSize:".84rem", padding:".1rem .42rem", borderRadius:20, background:`rgba(${hexToRgb(st.color||"#c4835a")},.08)`, color:st.color||"var(--copper)", border:`1px solid rgba(${hexToRgb(st.color||"#c4835a")},.2)` }}>
+                          {svc.icon} {svc.zh}
+                        </span>
+                      ))
+                  }
                 </div>
               </div>
 
@@ -1736,11 +1744,18 @@ function ServicesMenu({ isMobile, servicesMgr }) {
           loading="lazy"/>
       </div>
 
-      {/* Header row */}
+      {/* Header row — 新增服務 only visible when admin unlocked */}
       <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:"1rem" }}>
-        <button onClick={()=>setShowAdd(true)} className="btn-copper" style={{ padding:".38rem .9rem", fontSize:".78rem", letterSpacing:".08em" }}>
-          ＋ 新增服務
-        </button>
+        {servicesMgr ? (
+          <button onClick={()=>setShowAdd(true)} className="btn-copper" style={{ padding:".38rem .9rem", fontSize:".78rem", letterSpacing:".08em" }}>
+            ＋ 新增服務
+          </button>
+        ) : (
+          <button disabled title="請先解鎖管理後台"
+            style={{ padding:".38rem .9rem", fontSize:".78rem", letterSpacing:".08em", borderRadius:20, border:"1px solid var(--line)", background:"var(--bg2)", color:"var(--ink4)", cursor:"not-allowed", display:"flex", alignItems:"center", gap:".3rem" }}>
+            🔒 新增服務
+          </button>
+        )}
       </div>
 
       {/* Add service modal */}
