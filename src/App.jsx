@@ -50,7 +50,7 @@ const DEFAULT_SERVICES = [
   { id:"spa",        zh:"SPA洗",     en:"SPA Wash",         icon:"🐱", duration:30,  price:"$300",  priceNote:"",   category:"技術", color:"#c4bc9a", desc:"精油頭皮按摩洗髮" },
   { id:"perm",       zh:"燙髮",      en:"Perm",             icon:"〰",  duration:240, price:"$600",  priceNote:"起", category:"技術", color:"#c8a97e", desc:"熱塑燙、冷燙、巴西燙等多種選擇" },
   { id:"color",      zh:"染髮",      en:"Hair Color",       icon:"🎨", duration:150, price:"$500",  priceNote:"起", category:"技術", color:"#b8a0c4", desc:"全染、挑染、補染髮根" },
-  { id:"photo",      zh:"證件照拍攝", en:"ID Photo",        icon:"📷", duration:15,  price:"$200",  priceNote:"",   category:"技術", color:"#a0b8c4", desc:"專業證件照拍攝，當場修圖輸出" },
+  { id:"photo",      zh:"證件照拍攝", en:"ID Photo",        icon:"📷", duration:15,  price:"$200",  priceNote:"",   category:"技術", color:"#a0b8c4", desc:"專業證件照拍攝，當場修圖輸出", timeFrom:960 },
   { id:"treatment",  zh:"護髮",      en:"Treatment",        icon:"✨", duration:30,  price:"$500",  priceNote:"起", category:"養護", color:"#c4a0a0", desc:"深層修護、蛋白質補充、光澤修復" },
 ];
 let SERVICES = DEFAULT_SERVICES; // overridden dynamically
@@ -58,7 +58,7 @@ let SERVICES = DEFAULT_SERVICES; // overridden dynamically
 const DEFAULT_STYLISTS = [
   {
     id:"ken",    name:"獻爸",  title:"院長・技術總監", photo:null,
-    icon:"👨‍🦱", exp:"10年",   specialty:["洗髮","SPA洗","護髮"],
+    icon:"👨‍🦱", exp:"10年",   specialty:["洗髮","SPA洗","護髮","證件照拍攝"],
     color:"#c4835a", bio:"20年精湛技藝，擅長男士精緻剪裁與女士創意造型，每位客人都是藝術作品。",
     workDays:[1,2,3,4,5,6],
   },
@@ -554,7 +554,20 @@ function useStylists() {
 
   useEffect(() => {
     return fbListen("je_stylists", val => {
-      if (Array.isArray(val) && val.length > 0) setStylists(val);
+      const stored = Array.isArray(val) ? val : (val && typeof val === "object" ? Object.values(val) : []);
+      if (stored.length > 0) {
+        // 補齊 DEFAULT_STYLISTS 中各設計師的 specialty 新增項目
+        let changed = false;
+        const merged = stored.map(st => {
+          const def = DEFAULT_STYLISTS.find(d => d.id === st.id);
+          if (!def) return st;
+          const missing = (def.specialty || []).filter(sp => !(st.specialty || []).includes(sp));
+          if (missing.length > 0) { changed = true; return { ...st, specialty: [...(st.specialty||[]), ...missing] }; }
+          return st;
+        });
+        if (changed) { fbWrite("je_stylists", merged); setStylists(merged); }
+        else setStylists(stored);
+      }
       setLoaded(true);
     });
   }, []);
@@ -838,15 +851,17 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
     const dh       = getDayHours(sel.date);
     const isToday  = formatDate(sel.date) === formatDate(new Date());
     const nowMins  = isToday ? new Date().getHours() * 60 + new Date().getMinutes() : 0;
+    // 計算所有選擇服務中最晚的 timeFrom 限制（分鐘）
+    const minStartMins = selSvcs.reduce((max, s) => Math.max(max, s.timeFrom || 0), 0);
     return ALL_SLOTS.filter(slot => {
       const slotMins = slotToMinutes(slot);
       if (slotMins < dh.open) return false;
       if (slotMins + totalDuration > dh.close) return false;
-      // Block past slots for today (add 15min buffer)
+      if (minStartMins > 0 && slotMins < minStartMins) return false; // 時段限制
       if (isToday && slotMins < nowMins + 15) return false;
       return isSlotAvailable(slot, sel.stylist, sel.date, bookings, totalDuration);
     });
-  }, [sel.stylist, sel.date, sel.services, bookings, totalDuration]);
+  }, [sel.stylist, sel.date, sel.services, bookings, totalDuration, selSvcs]);
 
   const reset = () => { setStep(-1); setSel({services:[],stylist:null,date:null,time:null}); setForm({name:"",phone:"",lineId:"",notes:""}); setDone(null); setLineIdInput(""); setLinePasted(false); };
 
@@ -1041,6 +1056,11 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
                     </div>
                     <div style={{ fontFamily:"'Playfair Display',serif", fontSize:isMobile?".9rem":"1rem", fontWeight:500, color:active?"var(--copper)":"var(--ink)", marginBottom:".35rem" }}>{svc.zh}</div>
                     <div style={{ fontSize:".84rem", color:"var(--ink3)", lineHeight:1.62 }}>{svc.desc}</div>
+                    {svc.timeFrom > 0 && (
+                      <div style={{ marginTop:".3rem", fontSize:".7rem", color:"var(--copper)", display:"flex", alignItems:"center", gap:".2rem" }}>
+                        ⏰ 僅接受 {minsToTime(svc.timeFrom)} 後預約
+                      </div>
+                    )}
                   </div>
                   <div style={{ padding:isMobile?".55rem .9rem":".65rem 1.1rem", display:"flex", alignItems:"center", justifyContent:"space-between", background:active?"var(--copper-bg)":"var(--bg)", transition:"background .2s" }}>
                     <span style={{ fontSize:".70rem", color:"var(--ink3)", fontFamily:"'DM Mono',monospace" }}>{svc.duration}min</span>
