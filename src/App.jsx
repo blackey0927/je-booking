@@ -601,6 +601,13 @@ function useServices() {
         }
       });
 
+      // 證件照拍攝永遠排最後
+      const photoIdx = merged.findIndex(s => s.id === "photo");
+      if (photoIdx >= 0 && photoIdx !== merged.length - 1) {
+        const [photo] = merged.splice(photoIdx, 1);
+        merged.push(photo);
+      }
+
       // 若雲端缺少預設服務（如新增的一般沖洗），同步回 Firebase
       const defaultIds = new Set(DEFAULT_SERVICES.map(d => d.id));
       const storedIds  = new Set(stored.map(s => s.id));
@@ -611,7 +618,17 @@ function useServices() {
     });
   }, []);
 
-  const save = (next) => { setServices(next); fbWrite("je_services", next); };
+  const save = (next) => {
+    // 證件照拍攝永遠排最後
+    const sorted = [...next];
+    const photoIdx = sorted.findIndex(s => s.id === "photo");
+    if (photoIdx >= 0 && photoIdx !== sorted.length - 1) {
+      const [photo] = sorted.splice(photoIdx, 1);
+      sorted.push(photo);
+    }
+    setServices(sorted);
+    fbWrite("je_services", sorted);
+  };
 
   const updateService = (id, patch) => save(services.map(s => s.id === id ? { ...s, ...patch } : s));
   const addService    = (svc)        => save([...services, svc]);
