@@ -2729,11 +2729,23 @@ export default function SalonApp() {
   // Wrap addBooking to also upsert customer
   const handleBook = (booking) => {
     try {
-      const svcs    = getBookingSvcs(booking, servicesMgr.services || DEFAULT_SERVICES);
-      const svcName = svcs.map(s=>s.zh).join("・") || booking.serviceId || "";
-      const stylist = (stylistsMgr.stylists || DEFAULT_STYLISTS).find(s => s.id === booking.stylistId);
+      const svcs       = getBookingSvcs(booking, servicesMgr.services || DEFAULT_SERVICES);
+      const svcName    = svcs.map(s=>s.zh).join("・") || booking.serviceId || "";
+      const stylist    = (stylistsMgr.stylists || DEFAULT_STYLISTS).find(s => s.id === booking.stylistId);
+      const stylistName = stylist?.name || "";
       addBooking(booking);
-      customerMgr.upsertFromBooking(booking, svcName, stylist?.name||"");
+      customerMgr.upsertFromBooking(booking, svcName, stylistName);
+
+      // ── 預約成功立即通知店主 ──
+      const webhookUrl = lineSettings?.webhookUrl;
+      if (webhookUrl) {
+        const baseUrl = webhookUrl.replace(/\/notify\/?$/, "");
+        fetch(`${baseUrl}/notify-new`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ booking, svcName, stylistName }),
+        }).catch(err => console.warn("[notify-new]", err.message));
+      }
     } catch (e) {
       console.error("handleBook error:", e);
     }
