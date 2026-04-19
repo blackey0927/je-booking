@@ -42,7 +42,7 @@ const SALON = {
 
 const DEFAULT_SERVICES = [
   { id:"cut_male",   zh:"男子剪髮",  en:"Men's Haircut",    icon:"✂️", duration:15,  price:"$180",  priceNote:"",   category:"基本", color:"#a0c4b8", desc:"男士精緻剪裁，Fade 刀法、造型設計" },
-  { id:"rinse",      zh:"一般沖洗",  en:"Rinse",            icon:"🚿", duration:10,  price:"$50",   priceNote:"",   category:"基本", color:"#7a9aaa", desc:"沖洗頭髮，藥後沖洗使用" },
+  { id:"rinse",      zh:"一般沖洗",  en:"Rinse",            icon:"🚿", duration:5,   price:"$50",   priceNote:"",   category:"基本", color:"#7a9aaa", desc:"沖洗頭髮，藥後沖洗使用" },
   { id:"cut_female", zh:"女子剪髮",  en:"Women's Haircut",  icon:"✂️", duration:20,  price:"$230",  priceNote:"起", category:"基本", color:"#a0c4b8", desc:"量身剪裁，依臉形與需求設計造型" },
   { id:"cut_bang",   zh:"修瀏海",    en:"Bang Trim",        icon:"✂️", duration:10,  price:"$80",   priceNote:"",   category:"基本", color:"#a0c4b8", desc:"快速修剪瀏海，保持清爽俐落" },
   { id:"shampoo",    zh:"精緻洗髮",  en:"Shampoo",          icon:"🚿", duration:15,  price:"$100",  priceNote:"",   category:"基本", color:"#7a9aaa", desc:"深層清潔頭皮，按摩洗髮" },
@@ -50,6 +50,7 @@ const DEFAULT_SERVICES = [
   { id:"spa",        zh:"SPA洗",     en:"SPA Wash",         icon:"🐱", duration:30,  price:"$300",  priceNote:"",   category:"技術", color:"#c4bc9a", desc:"精油頭皮按摩洗髮" },
   { id:"perm",       zh:"燙髮",      en:"Perm",             icon:"〰",  duration:240, price:"$600",  priceNote:"起", category:"技術", color:"#c8a97e", desc:"熱塑燙、冷燙、巴西燙等多種選擇" },
   { id:"color",      zh:"染髮",      en:"Hair Color",       icon:"🎨", duration:150, price:"$500",  priceNote:"起", category:"技術", color:"#b8a0c4", desc:"全染、挑染、補染髮根" },
+  { id:"photo",      zh:"證件照拍攝", en:"ID Photo",        icon:"📷", duration:15,  price:"$200",  priceNote:"",   category:"技術", color:"#a0b8c4", desc:"專業證件照拍攝，當場修圖輸出" },
   { id:"treatment",  zh:"護髮",      en:"Treatment",        icon:"✨", duration:30,  price:"$500",  priceNote:"起", category:"養護", color:"#c4a0a0", desc:"深層修護、蛋白質補充、光澤修復" },
 ];
 let SERVICES = DEFAULT_SERVICES; // overridden dynamically
