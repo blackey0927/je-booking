@@ -58,25 +58,25 @@ let SERVICES = DEFAULT_SERVICES; // overridden dynamically
 const DEFAULT_STYLISTS = [
   {
     id:"ken",    name:"獻爸",  title:"院長・技術總監", photo:null,
-    icon:"👨‍🦱", exp:"10年",   specialty:["洗髮","SPA洗","護髮","證件照拍攝"],
+    icon:"👨‍🦱", exp:"10年",   specialty:["一般沖洗","精緻洗髮","SPA洗","護髮","證件照拍攝"],
     color:"#c4835a", bio:"20年精湛技藝，擅長男士精緻剪裁與女士創意造型，每位客人都是藝術作品。",
     workDays:[1,2,3,4,5,6],
   },
   {
     id:"mei",    name:"闆娘",  title:"染髮專師", photo:null,
-    icon:"👩‍🦰", exp:"20年",   specialty:["男子剪髮","女子剪髮","修瀏海","修眉","洗髮","SPA洗","燙髮","染髮","護髮"],
+    icon:"👩‍🦰", exp:"20年",   specialty:["男子剪髮","女子剪髮","修瀏海","修眉","一般沖洗","精緻洗髮","SPA洗","燙髮","染髮","護髮"],
     color:"#b8a0c4", bio:"色彩魔法師，精通日系霧感色、歐美挑染與各式漸層染色技術。",
     workDays:[2,3,4,5,6,0],
   },
   {
     id:"kai",    name:"Nancy",  title:"剪髮設計師", photo:null,
-    icon:"👨‍🎨", exp:"6年",    specialty:["男子剪髮","女子剪髮","修瀏海","修眉","洗髮","SPA洗","燙髮","染髮","護髮"],
+    icon:"👨‍🎨", exp:"6年",    specialty:["男子剪髮","女子剪髮","修瀏海","修眉","一般沖洗","精緻洗髮","SPA洗","燙髮","染髮","護髮"],
     color:"#a0c4b8", bio:"刀工精準俐落，男士 Fade 刀法專家，也擅長女士俐落短髮造型。",
     workDays:[1,3,4,5,6,0],
   },
   {
     id:"yu",     name:"Blackey",  title:"燙髮・護髮師", photo:null,
-    icon:"👩‍🦱", exp:"5年",    specialty:["洗髮","SPA洗","染髮","護髮"],
+    icon:"👩‍🦱", exp:"5年",    specialty:["一般沖洗","精緻洗髮","SPA洗","染髮","護髮"],
     color:"#c4a0a0", bio:"燙髮技術扎實，護髮療程細心，讓每位客人的頭髮健康又有光澤。",
     workDays:[1,2,4,5,6,0],
   },
@@ -556,14 +556,23 @@ function useStylists() {
     return fbListen("je_stylists", val => {
       const stored = Array.isArray(val) ? val : (val && typeof val === "object" ? Object.values(val) : []);
       if (stored.length > 0) {
-        // 補齊 DEFAULT_STYLISTS 中各設計師的 specialty 新增項目
         let changed = false;
         const merged = stored.map(st => {
+          let specialty = [...(st.specialty || [])];
+          // 遷移：舊名「洗髮」→ 拆為「一般沖洗」+「精緻洗髮」
+          if (specialty.includes("洗髮")) {
+            specialty = specialty.filter(s => s !== "洗髮");
+            if (!specialty.includes("一般沖洗")) specialty.push("一般沖洗");
+            if (!specialty.includes("精緻洗髮")) specialty.push("精緻洗髮");
+            changed = true;
+          }
+          // 補齊 DEFAULT_STYLISTS 新增的 specialty 項目
           const def = DEFAULT_STYLISTS.find(d => d.id === st.id);
-          if (!def) return st;
-          const missing = (def.specialty || []).filter(sp => !(st.specialty || []).includes(sp));
-          if (missing.length > 0) { changed = true; return { ...st, specialty: [...(st.specialty||[]), ...missing] }; }
-          return st;
+          if (def) {
+            const missing = (def.specialty || []).filter(sp => !specialty.includes(sp));
+            if (missing.length > 0) { specialty = [...specialty, ...missing]; changed = true; }
+          }
+          return { ...st, specialty };
         });
         if (changed) { fbWrite("je_stylists", merged); setStylists(merged); }
         else setStylists(stored);
