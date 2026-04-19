@@ -574,34 +574,39 @@ function useServices() {
   const [services, setServices] = useState(DEFAULT_SERVICES);
 
   useEffect(() => {
-    return fbListen("je_services", val => {
-      if (Array.isArray(val) && val.length > 0) {
-        // 補齊：若雲端缺少 DEFAULT_SERVICES 中的項目，自動插入並同步
-        let merged = [...val];
-        let changed = false;
-        DEFAULT_SERVICES.forEach((def, defIdx) => {
-          if (!merged.find(s => s.id === def.id)) {
-            // 插入到對應 DEFAULT_SERVICES 順序的位置
-            const prevDefId = DEFAULT_SERVICES[defIdx - 1]?.id;
-            const insertAfter = prevDefId ? merged.findIndex(s => s.id === prevDefId) : -1;
-            if (insertAfter >= 0) {
-              merged.splice(insertAfter + 1, 0, def);
-            } else {
-              merged.unshift(def); // 排最前
-            }
-            changed = true;
-          }
-        });
-        if (changed) {
-          setServices(merged);
-          fbWrite("je_services", merged); // 同步回雲端
-        } else {
-          setServices(val);
-        }
-      } else {
-        // 雲端無資料，直接用預設並寫入
+    return fbListen("je_services", rawVal => {
+      // Firebase 可能回傳 array 或 object（數字鍵）
+      const stored = Array.isArray(rawVal)
+        ? rawVal
+        : (rawVal && typeof rawVal === "object" ? Object.values(rawVal) : []);
+
+      if (stored.length === 0) {
+        // 雲端無資料 → 寫入預設並使用
         fbWrite("je_services", DEFAULT_SERVICES);
+        setServices(DEFAULT_SERVICES);
+        return;
       }
+
+      // 以 DEFAULT_SERVICES 為順序骨架，從 stored 覆蓋對應欄位
+      const merged = DEFAULT_SERVICES.map(def => {
+        const found = stored.find(s => s.id === def.id);
+        return found ? { ...def, ...found } : def; // 雲端有的用雲端值，否則用預設
+      });
+
+      // 附加管理員自訂新增的服務（id 以 svc_ 開頭）
+      stored.forEach(s => {
+        if (s.id && s.id.startsWith("svc_") && !merged.find(m => m.id === s.id)) {
+          merged.push(s);
+        }
+      });
+
+      // 若雲端缺少預設服務（如新增的一般沖洗），同步回 Firebase
+      const defaultIds = new Set(DEFAULT_SERVICES.map(d => d.id));
+      const storedIds  = new Set(stored.map(s => s.id));
+      const needsSync  = [...defaultIds].some(id => !storedIds.has(id));
+      if (needsSync) fbWrite("je_services", merged);
+
+      setServices(merged);
     });
   }, []);
 
