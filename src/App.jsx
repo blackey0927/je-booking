@@ -575,7 +575,33 @@ function useServices() {
 
   useEffect(() => {
     return fbListen("je_services", val => {
-      if (Array.isArray(val) && val.length > 0) setServices(val);
+      if (Array.isArray(val) && val.length > 0) {
+        // 補齊：若雲端缺少 DEFAULT_SERVICES 中的項目，自動插入並同步
+        let merged = [...val];
+        let changed = false;
+        DEFAULT_SERVICES.forEach((def, defIdx) => {
+          if (!merged.find(s => s.id === def.id)) {
+            // 插入到對應 DEFAULT_SERVICES 順序的位置
+            const prevDefId = DEFAULT_SERVICES[defIdx - 1]?.id;
+            const insertAfter = prevDefId ? merged.findIndex(s => s.id === prevDefId) : -1;
+            if (insertAfter >= 0) {
+              merged.splice(insertAfter + 1, 0, def);
+            } else {
+              merged.unshift(def); // 排最前
+            }
+            changed = true;
+          }
+        });
+        if (changed) {
+          setServices(merged);
+          fbWrite("je_services", merged); // 同步回雲端
+        } else {
+          setServices(val);
+        }
+      } else {
+        // 雲端無資料，直接用預設並寫入
+        fbWrite("je_services", DEFAULT_SERVICES);
+      }
     });
   }, []);
 
