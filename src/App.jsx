@@ -41,15 +41,16 @@ const SALON = {
 };
 
 const DEFAULT_SERVICES = [
-  { id:"cut_male",   zh:"男子剪髮", en:"Men's Haircut",    icon:"✂️", duration:15,  price:"$180",  priceNote:"",   category:"基本", color:"#a0c4b8", desc:"男士精緻剪裁，Fade 刀法、造型設計" },
-  { id:"cut_female", zh:"女子剪髮", en:"Women's Haircut",  icon:"✂️", duration:20,  price:"$230",  priceNote:"起", category:"基本", color:"#a0c4b8", desc:"量身剪裁，依臉形與需求設計造型" },
-  { id:"cut_bang",   zh:"修瀏海",   en:"Bang Trim",        icon:"✂️", duration:10,  price:"$80",   priceNote:"",   category:"基本", color:"#a0c4b8", desc:"快速修剪瀏海，保持清爽俐落" },
-  { id:"shampoo",    zh:"洗髮",     en:"Shampoo",          icon:"🚿", duration:15,  price:"$100",  priceNote:"",   category:"基本", color:"#7a9aaa", desc:"深層清潔頭皮，舒壓按摩洗髮" },
-  { id:"eyebrow",    zh:"修眉",     en:"Eyebrow Trim",     icon:"💅", duration:10,  price:"$50",   priceNote:"",   category:"基本", color:"#c4bc9a", desc:"修整眉型，讓五官更立體精緻" },
-  { id:"spa",        zh:"SPA洗",    en:"SPA Wash",         icon:"🐱", duration:30,  price:"$300",  priceNote:"",   category:"技術", color:"#c4bc9a", desc:"精油頭皮按摩洗髮" },
-  { id:"perm",       zh:"燙髮",     en:"Perm",             icon:"〰",  duration:480, price:"$600",  priceNote:"起", category:"技術", color:"#c8a97e", desc:"熱塑燙、冷燙、巴西燙等多種選擇" },
-  { id:"color",      zh:"染髮",     en:"Hair Color",       icon:"🎨", duration:150, price:"$500",  priceNote:"起", category:"技術", color:"#b8a0c4", desc:"全染、挑染、補染髮根" },
-  { id:"treatment",  zh:"護髮",     en:"Treatment",        icon:"✨", duration:30,  price:"$500",  priceNote:"起", category:"養護", color:"#c4a0a0", desc:"深層修護、蛋白質補充、光澤修復" },
+  { id:"cut_male",   zh:"男子剪髮",  en:"Men's Haircut",    icon:"✂️", duration:15,  price:"$180",  priceNote:"",   category:"基本", color:"#a0c4b8", desc:"男士精緻剪裁，Fade 刀法、造型設計" },
+  { id:"rinse",      zh:"一般沖洗",  en:"Rinse",            icon:"🚿", duration:10,  price:"$50",   priceNote:"",   category:"基本", color:"#7a9aaa", desc:"沖洗頭髮，藥後沖洗使用" },
+  { id:"cut_female", zh:"女子剪髮",  en:"Women's Haircut",  icon:"✂️", duration:20,  price:"$230",  priceNote:"起", category:"基本", color:"#a0c4b8", desc:"量身剪裁，依臉形與需求設計造型" },
+  { id:"cut_bang",   zh:"修瀏海",    en:"Bang Trim",        icon:"✂️", duration:10,  price:"$80",   priceNote:"",   category:"基本", color:"#a0c4b8", desc:"快速修剪瀏海，保持清爽俐落" },
+  { id:"shampoo",    zh:"精緻洗髮",  en:"Shampoo",          icon:"🚿", duration:15,  price:"$100",  priceNote:"",   category:"基本", color:"#7a9aaa", desc:"深層清潔頭皮，按摩洗髮" },
+  { id:"eyebrow",    zh:"修眉",      en:"Eyebrow Trim",     icon:"💅", duration:10,  price:"$50",   priceNote:"",   category:"基本", color:"#c4bc9a", desc:"修整眉型，讓五官更立體精緻" },
+  { id:"spa",        zh:"SPA洗",     en:"SPA Wash",         icon:"🐱", duration:30,  price:"$300",  priceNote:"",   category:"技術", color:"#c4bc9a", desc:"精油頭皮按摩洗髮" },
+  { id:"perm",       zh:"燙髮",      en:"Perm",             icon:"〰",  duration:240, price:"$600",  priceNote:"起", category:"技術", color:"#c8a97e", desc:"熱塑燙、冷燙、巴西燙等多種選擇" },
+  { id:"color",      zh:"染髮",      en:"Hair Color",       icon:"🎨", duration:150, price:"$500",  priceNote:"起", category:"技術", color:"#b8a0c4", desc:"全染、挑染、補染髮根" },
+  { id:"treatment",  zh:"護髮",      en:"Treatment",        icon:"✨", duration:30,  price:"$500",  priceNote:"起", category:"養護", color:"#c4a0a0", desc:"深層修護、蛋白質補充、光澤修復" },
 ];
 let SERVICES = DEFAULT_SERVICES; // overridden dynamically
 
@@ -763,12 +764,15 @@ function AdminLockScreen({ onUnlock, isMobile }) {
    BOOKING FLOW (5 steps)
 ═══════════════════════════════════════════════════════════ */
 function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEFAULT_STYLISTS, services=DEFAULT_SERVICES }) {
-  const [step, setStep] = useState(0);
+  // step -1 = LINE 設定前置步驟, 0 = 選服務, 1 = 選設計師, ...
+  const [step, setStep] = useState(-1);
   const [sel, setSel]   = useState({ services:[], stylist:null, date:null, time:null });
   const [form, setForm] = useState({ name:"", phone:"", lineId:"", notes:"" });
   const [done, setDone] = useState(null);
   const [calDate, setCalDate] = useState(() => { const d=new Date(); return {y:d.getFullYear(),m:d.getMonth()}; });
-  const [showManual, setShowManual] = useState(false); // ← hook moved to top
+  const [showManual, setShowManual] = useState(false);
+  const [lineIdInput, setLineIdInput] = useState("");
+  const [linePasted, setLinePasted]   = useState(false);
 
   const today = new Date(); today.setHours(0,0,0,0);
 
@@ -795,7 +799,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
     });
   }, [sel.stylist, sel.date, sel.services, bookings, totalDuration]);
 
-  const reset = () => { setStep(0); setSel({services:[],stylist:null,date:null,time:null}); setForm({name:"",phone:"",lineId:"",notes:""}); setDone(null); };
+  const reset = () => { setStep(-1); setSel({services:[],stylist:null,date:null,time:null}); setForm({name:"",phone:"",lineId:"",notes:""}); setDone(null); setLineIdInput(""); setLinePasted(false); };
 
   const confirmBook = () => {
     const booking = {
@@ -824,8 +828,126 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
 
   return (
     <div style={{ maxWidth:600, margin:"0 auto" }}>
-      {/* Step bar */}
-      <div style={{ marginBottom:"2rem" }}>
+
+      {/* ── STEP -1: LINE 設定（前置，可略過）── */}
+      {step===-1 && (
+        <div style={{ animation:"fadeUp .35s ease both" }}>
+          {/* 標題 */}
+          <div style={{ textAlign:"center", marginBottom:"1.8rem" }}>
+            <div style={{ fontSize:"2.2rem", marginBottom:".5rem" }}>💬</div>
+            <h2 style={{ ...h2Style, marginBottom:".35rem" }}>開始預約前</h2>
+            <p style={{ fontSize:".88rem", color:"var(--ink3)", lineHeight:1.7 }}>
+              建議先完成 LINE 通知設定，預約確認、提醒訊息會直接傳到您的 LINE
+            </p>
+          </div>
+
+          {/* 步驟卡片 */}
+          <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:"var(--r)", overflow:"hidden", marginBottom:"1rem" }}>
+            {/* Step A */}
+            <div style={{ padding:"1rem 1.1rem", borderBottom:"1px solid var(--line)", display:"flex", gap:".85rem", alignItems:"flex-start" }}>
+              <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(6,199,85,.12)", border:"1px solid rgba(6,199,85,.3)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:".78rem", fontWeight:700, color:"#06C755", flexShrink:0, marginTop:".1rem" }}>1</div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:".9rem", fontWeight:600, color:"var(--ink)", marginBottom:".3rem" }}>加入 LINE 官方帳號</div>
+                <div style={{ fontSize:".82rem", color:"var(--ink3)", lineHeight:1.65, marginBottom:".6rem" }}>
+                  點擊下方按鈕加入好友，或搜尋 <b style={{ color:"var(--ink2)" }}>{SALON.lineOaId}</b>
+                </div>
+                <a href={`https://line.me/R/ti/p/${SALON.lineOaId}`} target="_blank" rel="noreferrer"
+                  style={{ display:"inline-flex", alignItems:"center", gap:".4rem", padding:".42rem .9rem", background:"#06C755", color:"#fff", borderRadius:20, fontSize:".82rem", fontWeight:600, textDecoration:"none" }}>
+                  <span style={{ fontSize:".95rem" }}>💬</span> 加入 LINE 好友
+                </a>
+              </div>
+            </div>
+            {/* Step B */}
+            <div style={{ padding:"1rem 1.1rem", borderBottom:"1px solid var(--line)", display:"flex", gap:".85rem", alignItems:"flex-start" }}>
+              <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(6,199,85,.12)", border:"1px solid rgba(6,199,85,.3)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:".78rem", fontWeight:700, color:"#06C755", flexShrink:0, marginTop:".1rem" }}>2</div>
+              <div>
+                <div style={{ fontSize:".9rem", fontWeight:600, color:"var(--ink)", marginBottom:".3rem" }}>傳送「查詢我的預約」</div>
+                <div style={{ fontSize:".82rem", color:"var(--ink3)", lineHeight:1.65 }}>
+                  在 LINE 聊天室傳送這句話，bot 會立即回覆您的 userId（U 開頭 33 碼）
+                </div>
+              </div>
+            </div>
+            {/* Step C — userId input */}
+            <div style={{ padding:"1rem 1.1rem" }}>
+              <div style={{ display:"flex", gap:".85rem", alignItems:"flex-start" }}>
+                <div style={{ width:28, height:28, borderRadius:"50%", background: linePasted?"rgba(6,199,85,.12)":"rgba(196,131,90,.1)", border:`1px solid ${linePasted?"rgba(6,199,85,.3)":"var(--copper-bd)"}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:".78rem", fontWeight:700, color:linePasted?"#06C755":"var(--copper)", flexShrink:0, marginTop:".1rem" }}>
+                  {linePasted ? "✓" : "3"}
+                </div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:".9rem", fontWeight:600, color:"var(--ink)", marginBottom:".3rem" }}>貼上您的 userId</div>
+                  <div style={{ fontSize:".82rem", color:"var(--ink3)", marginBottom:".6rem" }}>複製 bot 回覆的 U 開頭 33 碼，貼到下方欄位</div>
+                  {/* 大輸入框 + 貼上按鈕 */}
+                  <div style={{ display:"flex", gap:".5rem", alignItems:"stretch" }}>
+                    <input
+                      type="text"
+                      value={lineIdInput}
+                      onChange={e => {
+                        const v = e.target.value.trim();
+                        setLineIdInput(v);
+                        setLinePasted(/^U[0-9a-zA-Z]{32}$/.test(v));
+                      }}
+                      placeholder="Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                      style={{
+                        flex:1, padding:".65rem .8rem",
+                        fontSize: isMobile?".78rem":".85rem",
+                        fontFamily:"'DM Mono',monospace",
+                        letterSpacing:".04em",
+                        background:"var(--bg2)", border:`1.5px solid ${linePasted?"rgba(6,199,85,.5)":"var(--line)"}`,
+                        borderRadius:"var(--r-sm)", color:"var(--ink)",
+                        outline:"none", transition:"border .2s",
+                      }}
+                    />
+                    {navigator.clipboard && (
+                      <button onClick={async()=>{
+                        try {
+                          const text = await navigator.clipboard.readText();
+                          const v = text.trim();
+                          setLineIdInput(v);
+                          setLinePasted(/^U[0-9a-zA-Z]{32}$/.test(v));
+                        } catch(_) {}
+                      }}
+                        style={{ padding:".65rem .9rem", borderRadius:"var(--r-sm)", border:"1px solid var(--line)", background:"var(--card)", color:"var(--ink2)", fontSize:".82rem", cursor:"pointer", whiteSpace:"nowrap", display:"flex", alignItems:"center", gap:".3rem" }}>
+                        📋 貼上
+                      </button>
+                    )}
+                  </div>
+                  {linePasted && (
+                    <div style={{ marginTop:".4rem", fontSize:".76rem", color:"#06C755", display:"flex", alignItems:"center", gap:".3rem" }}>
+                      ✅ userId 格式正確，已準備好接收通知
+                    </div>
+                  )}
+                  {lineIdInput && !linePasted && (
+                    <div style={{ marginTop:".4rem", fontSize:".76rem", color:"#c46060" }}>
+                      ⚠️ 格式不符（需為 U 開頭 33 碼），請重新確認
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 操作按鈕 */}
+          <div style={{ display:"flex", flexDirection:"column", gap:".6rem" }}>
+            <button onClick={()=>{
+              if (linePasted) setForm(p=>({...p, lineId: lineIdInput}));
+              setStep(0);
+            }}
+              className="btn-copper"
+              style={{ padding:".78rem 1rem", fontSize:".95rem", letterSpacing:".08em" }}>
+              {linePasted ? "✓ 已設定 LINE，開始預約 →" : "略過，直接開始預約 →"}
+            </button>
+            {!linePasted && (
+              <p style={{ textAlign:"center", fontSize:".76rem", color:"var(--ink4)", margin:0 }}>
+                不需要 LINE 通知也可以正常預約
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 步驟列（step >= 0 時才顯示）*/}
+      {step >= 0 && (
+        <div style={{ marginBottom:"2rem" }}>
         <div style={{ display:"flex", alignItems:"flex-start", position:"relative", padding:"0 8%" }}>
           <div style={{ position:"absolute", left:"8%", right:"8%", top:13, height:1, background:"var(--line)", zIndex:0 }}/>
           <div style={{ position:"absolute", left:"8%", top:13, height:1, background:"var(--copper)", zIndex:1, width:`${Math.min(step/(STEPS.length-1)*100,100)}%`, transition:"width .4s ease" }}/>
@@ -839,7 +961,8 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
             );
           })}
         </div>
-      </div>
+        </div>
+      )}
 
       {/* ── STEP 0: Service ── */}
       {step===0 && (
@@ -1050,17 +1173,42 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
               />
             </div>
           ))}
-          {/* LINE ID 欄位＋取得說明 */}
+          {/* LINE ID 欄位 — 已在前置步驟設定，這裡僅供確認/修改 */}
           <div style={{ marginBottom:".75rem" }}>
-            <label className="field-label">LINE ID（選填，用於接收預約通知）</label>
-            <input type="text" placeholder="U 開頭的 userId，例如：Uab12cd34ef56..." value={form.lineId}
-              onChange={e=>setForm(p=>({...p,lineId:e.target.value}))} className="field-input"/>
-            <div style={{ marginTop:".4rem", padding:".5rem .75rem", background:"rgba(6,199,85,.06)", border:"1px solid rgba(6,199,85,.2)", borderRadius:6, fontSize:".76rem", color:"#3a7a50", lineHeight:1.7 }}>
-              💬 如何取得？請先加入官方帳號&nbsp;
-              <a href={`https://line.me/R/ti/p/${SALON.lineOaId}`} target="_blank" rel="noreferrer"
-                style={{ color:"#06C755", fontWeight:600, textDecoration:"none" }}>{SALON.lineOaId}</a>
-              ，然後在聊天室傳送「<b>查詢我的預約</b>」，bot 會自動回覆您的 userId（U 開頭 33 碼），複製後填入此欄即可收到通知。
+            <label className="field-label">
+              LINE ID（選填）
+              {form.lineId && <span style={{ marginLeft:".5rem", fontSize:".7rem", color:"#06C755", fontWeight:400 }}>✅ 已設定，可收到通知</span>}
+            </label>
+            <div style={{ display:"flex", gap:".5rem", alignItems:"stretch" }}>
+              <input type="text"
+                placeholder="Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                value={form.lineId}
+                onChange={e=>setForm(p=>({...p,lineId:e.target.value.trim()}))}
+                style={{
+                  flex:1, padding:".65rem .8rem",
+                  fontSize:isMobile?".78rem":".85rem",
+                  fontFamily:"'DM Mono',monospace", letterSpacing:".03em",
+                  background:"var(--bg2)", border:`1.5px solid ${/^U[0-9a-zA-Z]{32}$/.test(form.lineId)?"rgba(6,199,85,.5)":"var(--line)"}`,
+                  borderRadius:"var(--r-sm)", color:"var(--ink)", outline:"none",
+                }}
+              />
+              {navigator.clipboard && (
+                <button onClick={async()=>{
+                  try {
+                    const text = await navigator.clipboard.readText();
+                    setForm(p=>({...p, lineId:text.trim()}));
+                  } catch(_) {}
+                }}
+                  style={{ padding:".65rem .9rem", borderRadius:"var(--r-sm)", border:"1px solid var(--line)", background:"var(--card)", color:"var(--ink2)", fontSize:".82rem", cursor:"pointer", whiteSpace:"nowrap", flexShrink:0 }}>
+                  📋 貼上
+                </button>
+              )}
             </div>
+            {!form.lineId && (
+              <div style={{ marginTop:".35rem", fontSize:".74rem", color:"var(--ink4)", lineHeight:1.6 }}>
+                未設定？<a href={`https://line.me/R/ti/p/${SALON.lineOaId}`} target="_blank" rel="noreferrer" style={{ color:"#06C755", textDecoration:"none", fontWeight:600 }}>加入 {SALON.lineOaId}</a>，傳送「查詢我的預約」取得 userId 後貼上
+              </div>
+            )}
           </div>
           {/* 備注欄位 */}
           {[
