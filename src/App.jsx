@@ -935,15 +935,92 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
   return (
     <div style={{ maxWidth:600, margin:"0 auto" }}>
 
-      {/* ── STEP -1: LINE 設定（前置，可略過）── */}
+      {/* ── STEP -1: 歡迎入口 + LINE 設定 ── */}
       {step===-1 && (
         <div style={{ animation:"fadeUp .35s ease both" }}>
+
+          {/* ══ 沙龍入口三欄預覽 ══ */}
+          <div style={{ marginBottom:"2rem" }}>
+            {/* Hero greeting */}
+            <div style={{ textAlign:"center", marginBottom:"1.6rem" }}>
+              <div style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:isMobile?"1.6rem":"2rem", fontWeight:400, letterSpacing:".18em", color:"var(--ink)", lineHeight:1.2, marginBottom:".4rem" }}>
+                歡迎光臨
+              </div>
+              <div style={{ fontSize:".82rem", color:"var(--ink3)", letterSpacing:".18em", textTransform:"uppercase" }}>JE 染燙快剪屋 · Hair Salon</div>
+            </div>
+
+            {/* 三欄卡片：服務 / 設計師 / 預約 */}
+            <div style={{ display:"grid", gridTemplateColumns: isMobile?"1fr":"repeat(3,1fr)", gap:".75rem", marginBottom:"1.4rem" }}>
+              {/* 服務卡 */}
+              <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:12, overflow:"hidden", display:"flex", flexDirection: isMobile?"row":"column", alignItems: isMobile?"center":"stretch" }}>
+                <div style={{ background:`linear-gradient(135deg, rgba(160,196,184,.25) 0%, rgba(122,154,170,.12) 100%)`, padding: isMobile?".9rem 1rem":".9rem .8rem", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, minWidth: isMobile?64:"auto", minHeight: isMobile?"auto":80 }}>
+                  <span style={{ fontSize: isMobile?"1.6rem":"2rem" }}>✂️</span>
+                </div>
+                <div style={{ padding: isMobile?".6rem .8rem":".75rem .8rem" }}>
+                  <div style={{ fontSize:".78rem", fontWeight:600, color:"var(--ink)", marginBottom:".3rem", letterSpacing:".06em" }}>服務項目</div>
+                  <div style={{ fontSize:".7rem", color:"var(--ink3)", lineHeight:1.6 }}>剪髮・燙髮・染髮・護髮・SPA洗髮・修眉・證件照</div>
+                </div>
+              </div>
+              {/* 設計師卡 */}
+              <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:12, overflow:"hidden", display:"flex", flexDirection: isMobile?"row":"column", alignItems: isMobile?"center":"stretch" }}>
+                <div style={{ background:`linear-gradient(135deg, rgba(196,131,90,.2) 0%, rgba(196,188,154,.1) 100%)`, padding: isMobile?".9rem 1rem":".9rem .8rem", display:"flex", gap:".3rem", alignItems:"center", justifyContent:"center", flexShrink:0, minWidth: isMobile?64:"auto", minHeight: isMobile?"auto":80, flexWrap:"wrap" }}>
+                  {STYLISTS_LOCAL.slice(0,4).map(st=>(
+                    <div key={st.id} style={{ width: isMobile?24:28, height: isMobile?24:28, borderRadius:"50%", background:`rgba(${hexToRgb(st.color)},.2)`, border:`1px solid rgba(${hexToRgb(st.color)},.4)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize: isMobile?".78rem":".88rem" }}>
+                      {stylistSettings?.[st.id]?.photo
+                        ? <img src={stylistSettings[st.id].photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover", borderRadius:"50%" }}/>
+                        : st.icon}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ padding: isMobile?".6rem .8rem":".75rem .8rem" }}>
+                  <div style={{ fontSize:".78rem", fontWeight:600, color:"var(--ink)", marginBottom:".3rem", letterSpacing:".06em" }}>設計師團隊</div>
+                  <div style={{ fontSize:".7rem", color:"var(--ink3)", lineHeight:1.6 }}>
+                    {STYLISTS_LOCAL.map(s=>s.name).join("・")}
+                  </div>
+                </div>
+              </div>
+              {/* 預約說明卡 */}
+              <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:12, overflow:"hidden", display:"flex", flexDirection: isMobile?"row":"column", alignItems: isMobile?"center":"stretch" }}>
+                <div style={{ background:`linear-gradient(135deg, rgba(180,160,196,.2) 0%, rgba(160,184,196,.1) 100%)`, padding: isMobile?".9rem 1rem":".9rem .8rem", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, minWidth: isMobile?64:"auto", minHeight: isMobile?"auto":80 }}>
+                  <span style={{ fontSize: isMobile?"1.6rem":"2rem" }}>📅</span>
+                </div>
+                <div style={{ padding: isMobile?".6rem .8rem":".75rem .8rem" }}>
+                  <div style={{ fontSize:".78rem", fontWeight:600, color:"var(--ink)", marginBottom:".3rem", letterSpacing:".06em" }}>線上預約</div>
+                  <div style={{ fontSize:".7rem", color:"var(--ink3)", lineHeight:1.6 }}>選服務 → 選設計師 → 選時間 → 完成</div>
+                </div>
+              </div>
+            </div>
+
+            {/* ── 誠摯預約守則 Info Card ── */}
+            <div style={{
+              borderLeft:"4px solid var(--copper)",
+              background:"rgba(248,245,241,.9)",
+              borderRadius:"0 10px 10px 0",
+              padding: isMobile?".85rem 1rem":".95rem 1.2rem",
+              marginBottom:"1.4rem",
+              display:"flex", gap:".75rem", alignItems:"flex-start",
+              boxShadow:"0 2px 12px rgba(196,131,90,.08)",
+            }}>
+              {/* 時鐘圖示 */}
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--copper)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0, marginTop:".12rem" }}>
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+              <div>
+                <div style={{ fontSize:".78rem", fontWeight:600, color:"var(--copper)", marginBottom:".35rem", letterSpacing:".06em" }}>誠摯的預約守則</div>
+                <p style={{ fontSize:isMobile?".7rem":".74rem", color:"var(--ink2)", lineHeight:1.75, margin:0 }}>
+                  為保障您的體驗品質，我們嚴格控管每一位設計師的服務時長。若遇現場與預約登錄時間有細微落差，我們將竭盡所能優先為您調整安排。如造成您的等候，誠摯感謝您的體諒；我們堅持不趕工、不馬虎，只為將最好的髮型呈現給您。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* ══ LINE 設定前置 ══ */}
           {/* 標題 */}
-          <div style={{ textAlign:"center", marginBottom:"1.8rem" }}>
-            <div style={{ fontSize:"2.2rem", marginBottom:".5rem" }}>💬</div>
-            <h2 style={{ ...h2Style, marginBottom:".35rem" }}>開始預約前</h2>
-            <p style={{ fontSize:".88rem", color:"var(--ink3)", lineHeight:1.7 }}>
-              建議先完成 LINE 通知設定，預約確認、提醒訊息會直接傳到您的 LINE
+          <div style={{ textAlign:"center", marginBottom:"1.4rem" }}>
+            <div style={{ fontSize:"1.4rem", marginBottom:".4rem" }}>💬</div>
+            <h2 style={{ ...h2Style, marginBottom:".25rem", fontSize:isMobile?"1.1rem":"1.2rem" }}>設定 LINE 通知（可略過）</h2>
+            <p style={{ fontSize:".82rem", color:"var(--ink3)", lineHeight:1.7, margin:0 }}>
+              完成設定後，預約確認與提醒訊息將直接傳到您的 LINE
             </p>
           </div>
 
@@ -1145,46 +1222,81 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
         </div>
       )}
 
-      {/* ── STEP 1: Stylist ── */}
+      {/* ── STEP 1: Stylist — Full-bleed photo cards ── */}
       {step===1 && (
         <div>
           <h2 style={h2Style}>選擇設計師</h2>
-          <div style={{ display:"grid", gridTemplateColumns: isMobile?"1fr 1fr":"1fr 1fr", gap:".7rem", marginBottom:".7rem" }}>
+          <p style={{ fontSize:".84rem", color:"var(--ink3)", marginBottom:"1.2rem", marginTop:"-.5rem" }}>選擇最適合您的造型師 ✦</p>
+          <div style={{ display:"grid", gridTemplateColumns: isMobile?"1fr 1fr":"1fr 1fr", gap:"1rem", marginBottom:".7rem" }}>
             {STYLISTS_LOCAL.map(st => {
               const canDoSvc = sel.services.every(id => {
                 const s = SERVICES_LOCAL.find(x => x.id === id);
                 return s && st.specialty.includes(s.zh);
               });
               const active   = sel.stylist===st.id;
+              const photo    = stylistSettings?.[st.id]?.photo;
               return (
                 <button key={st.id} onClick={()=>canDoSvc&&setSel(p=>({...p,stylist:st.id,date:null,time:null}))}
-                  className={`stylist-card${active?" active":""}${!canDoSvc?" disabled":""}`}
                   style={{
-                    display:"flex", flexDirection:"column", gap:".45rem", padding:".95rem .95rem", textAlign:"left",
+                    position:"relative", display:"flex", flexDirection:"column", padding:0,
+                    borderRadius:14, overflow:"hidden", textAlign:"left",
                     cursor:canDoSvc?"pointer":"not-allowed",
-                    opacity:canDoSvc?1:.35,
+                    opacity:canDoSvc?1:.38,
+                    border:`2px solid ${active?"var(--copper)":"transparent"}`,
+                    boxShadow: active?"0 0 0 3px var(--copper-bg), 0 8px 32px rgba(196,131,90,.22)":"0 2px 12px rgba(0,0,0,.1)",
+                    transition:"all .22s ease",
+                    background:"#1c1816",
                     WebkitTapHighlightColor:"transparent",
+                    aspectRatio: isMobile?"3/4":"4/5",
                   }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:".6rem" }}>
-                    <div style={{ width:38, height:38, borderRadius:"50%", overflow:"hidden", border:`1px solid rgba(${hexToRgb(st.color)},.25)`, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", background:`rgba(${hexToRgb(st.color)},.07)` }}>
-                      {stylistSettings?.[st.id]?.photo
-                        ? <img src={stylistSettings[st.id].photo} alt={st.name} style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
-                        : <span style={{ fontSize:"1.55rem", lineHeight:1 }}>{st.icon}</span>
-                      }
+                  {/* Full-bleed photo or gradient placeholder */}
+                  {photo
+                    ? <img src={photo} alt={st.name} style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover", objectPosition:"top center", transition:"transform .3s ease" }}/>
+                    : <div style={{ position:"absolute", inset:0, background:`linear-gradient(160deg, rgba(${hexToRgb(st.color)},.5) 0%, rgba(28,24,22,.85) 100%)`, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                        <span style={{ fontSize:isMobile?"4rem":"5rem", opacity:.6 }}>{st.icon}</span>
+                      </div>
+                  }
+
+                  {/* Gradient overlay — bottom */}
+                  <div style={{ position:"absolute", inset:0, background:"linear-gradient(to bottom, transparent 30%, rgba(14,10,6,.72) 70%, rgba(14,10,6,.95) 100%)", zIndex:1 }}/>
+
+                  {/* Selected checkmark badge */}
+                  {active && (
+                    <div style={{ position:"absolute", top:".65rem", right:".65rem", zIndex:3, width:26, height:26, borderRadius:"50%", background:"var(--copper)", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 2px 8px rgba(0,0,0,.3)" }}>
+                      <span style={{ color:"#fff", fontSize:".72rem", fontWeight:700 }}>✓</span>
                     </div>
-                    <div>
-                      <div style={{ fontSize:"1.02rem", fontWeight:600, color:"var(--ink)" }}>{st.name}</div>
-                      <div style={{ fontSize:".70rem", color:st.color }}>{st.title}</div>
+                  )}
+
+                  {/* Not available badge */}
+                  {!canDoSvc && (
+                    <div style={{ position:"absolute", top:".65rem", left:".65rem", zIndex:3, padding:".15rem .5rem", borderRadius:20, background:"rgba(0,0,0,.6)", backdropFilter:"blur(4px)" }}>
+                      <span style={{ color:"#fff", fontSize:".58rem", letterSpacing:".04em" }}>此服務不提供</span>
                     </div>
-                  </div>
-                  <div style={{ fontSize:".86rem", color:"#666666", lineHeight:1.6 }}>{st.bio}</div>
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:".22rem", marginTop:".1rem" }}>
-                    {st.specialty.map(sp=>(
-                      <span key={sp} style={{ fontSize:".64rem", padding:".08rem .38rem", borderRadius:20, background:`rgba(${hexToRgb(st.color)},.08)`, color:st.color, border:`1px solid rgba(${hexToRgb(st.color)},.2)` }}>{sp}</span>
-                    ))}
-                  </div>
-                  <div style={{ fontSize:".70rem", color:"#999999" }}>
-                    上班：{WEEK_DAYS.filter((_,i)=>st.workDays.includes(i)).join("・")}
+                  )}
+
+                  {/* Bottom info panel */}
+                  <div style={{ position:"relative", zIndex:2, marginTop:"auto", padding:isMobile?".7rem .75rem .75rem":".85rem 1rem 1rem" }}>
+                    {/* Name + title */}
+                    <div style={{ marginBottom:".4rem" }}>
+                      <div style={{ fontFamily:"'Playfair Display',serif", fontSize:isMobile?"1.05rem":"1.18rem", fontWeight:500, color:"#fff", lineHeight:1.2, letterSpacing:".02em" }}>{st.name}</div>
+                      <div style={{ fontSize:isMobile?".62rem":".68rem", color:`rgba(${hexToRgb(st.color)},1)`, marginTop:".12rem", letterSpacing:".06em", fontWeight:500 }}>{st.title}</div>
+                    </div>
+
+                    {/* Bio */}
+                    <div style={{ fontSize:isMobile?".68rem":".74rem", color:"rgba(255,255,255,.75)", lineHeight:1.55, marginBottom:".5rem", display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden" }}>{st.bio}</div>
+
+                    {/* Specialty tags — top 4 */}
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:".2rem", marginBottom:".4rem" }}>
+                      {st.specialty.slice(0,isMobile?3:5).map(sp=>(
+                        <span key={sp} style={{ fontSize:isMobile?".54rem":".58rem", padding:".08rem .3rem", borderRadius:20, background:`rgba(${hexToRgb(st.color)},.18)`, color:`rgba(${hexToRgb(st.color)},1)`, border:`1px solid rgba(${hexToRgb(st.color)},.35)`, backdropFilter:"blur(4px)" }}>{sp}</span>
+                      ))}
+                      {st.specialty.length > (isMobile?3:5) && <span style={{ fontSize:isMobile?".54rem":".58rem", padding:".08rem .3rem", borderRadius:20, background:"rgba(255,255,255,.08)", color:"rgba(255,255,255,.5)" }}>+{st.specialty.length-(isMobile?3:5)}</span>}
+                    </div>
+
+                    {/* Work days */}
+                    <div style={{ fontSize:isMobile?".58rem":".62rem", color:"rgba(255,255,255,.45)", letterSpacing:".04em" }}>
+                      上班：{WEEK_DAYS.filter((_,i)=>st.workDays.includes(i)).join("・")}
+                    </div>
                   </div>
                 </button>
               );
@@ -1350,7 +1462,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
               />
             </div>
           ))}
-          <NavBtns onBack={()=>setStep(2)} onNext={confirmBook} nextLabel="確認預約 ✦" nextDisabled={!form.name||!form.phone} isMobile={isMobile}/>
+          <NavBtns onBack={()=>setStep(2)} onNext={confirmBook} nextLabel="確認預約 ✦" nextDisabled={!form.name||!form.phone} isMobile={isMobile} showInfo={true}/>
         </div>
       )}
 
@@ -1392,6 +1504,29 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
             <button onClick={reset} className="btn-ghost" style={{ width:"100%", padding:".72rem 1rem" }}>
               再次預約
             </button>
+          </div>
+
+          {/* ── 溫暖結尾：預約守則 Info Card ── */}
+          <div style={{
+            marginTop:"2rem",
+            borderLeft:"4px solid var(--copper)",
+            background:"rgba(248,245,241,.85)",
+            borderRadius:"0 10px 10px 0",
+            padding:".85rem 1.1rem",
+            textAlign:"left",
+            display:"flex", gap:".65rem", alignItems:"flex-start",
+            boxShadow:"0 2px 10px rgba(196,131,90,.07)",
+          }}>
+            {/* Sparkles icon */}
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--copper)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0, marginTop:".14rem" }}>
+              <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z"/><path d="M19 3l.75 2.25L22 6l-2.25.75L19 9l-.75-2.25L16 6l2.25-.75z"/><path d="M5 17l.75 2.25L8 20l-2.25.75L5 23l-.75-2.25L2 20l2.25-.75z"/>
+            </svg>
+            <div>
+              <div style={{ fontSize:".72rem", fontWeight:600, color:"var(--copper)", marginBottom:".28rem", letterSpacing:".05em" }}>誠摯的預約守則</div>
+              <p style={{ fontSize:".7rem", color:"var(--ink3)", lineHeight:1.75, margin:0 }}>
+                為保障您的體驗品質，我們嚴格控管每一位設計師的服務時長。若遇現場與預約登錄時間有細微落差，我們將竭盡所能優先為您調整安排。如造成您的等候，誠摯感謝您的體諒；我們堅持不趕工、不馬虎，只為將最好的髮型呈現給您。
+              </p>
+            </div>
           </div>
 
         </div>
@@ -2544,19 +2679,72 @@ const arrowBtn = { background:"rgba(0,0,0,.04)", border:"1px solid rgba(0,0,0,.1
 const primaryBtn = { padding:".75rem 1.8rem", background:"var(--copper)", border:"1px solid var(--copper)", color:"#ffffff", borderRadius:"var(--r-sm)", cursor:"pointer", fontFamily:"'Cormorant Garamond',serif", fontSize:"1.32rem", letterSpacing:".18em", touchAction:"manipulation", WebkitTapHighlightColor:"transparent", transition:"all .22s" };
 const actionBtn = { padding:".22rem .65rem", background:"transparent", border:"1px solid rgba(0,0,0,.1)", color:"#888888", borderRadius:4, cursor:"pointer", fontSize:".86rem", touchAction:"manipulation", WebkitTapHighlightColor:"transparent" };
 
-function NavBtns({ onBack, onNext, nextDisabled, nextLabel="下一步 →", isMobile }) {
+function PolicyTooltip({ isMobile }) {
+  const [open, setOpen] = React.useState(false);
   return (
-    <div style={{ display:"flex", justifyContent:"space-between", marginTop:"2rem", gap:".6rem" }}>
+    <div style={{ position:"relative", display:"inline-flex", alignItems:"center" }}>
+      <button
+        onClick={()=>setOpen(o=>!o)}
+        title="預約守則"
+        style={{
+          width:26, height:26, borderRadius:"50%",
+          background: open?"var(--copper)":"rgba(196,131,90,.12)",
+          border:`1px solid ${open?"var(--copper)":"rgba(196,131,90,.35)"}`,
+          color: open?"#fff":"var(--copper)",
+          fontSize:".78rem", fontWeight:700, cursor:"pointer",
+          display:"flex", alignItems:"center", justifyContent:"center",
+          transition:"all .18s", flexShrink:0,
+          lineHeight:1,
+        }}>
+        i
+      </button>
+      {open && (
+        <div style={{
+          position:"absolute", bottom:"calc(100% + 8px)",
+          right:0, zIndex:200,
+          width: isMobile?280:340,
+          background:"var(--card)",
+          borderLeft:"3px solid var(--copper)",
+          borderRadius:"0 10px 10px 0",
+          boxShadow:"0 8px 32px rgba(0,0,0,.16)",
+          padding:".9rem 1rem",
+          animation:"fadeUp .2s ease both",
+        }}>
+          <div style={{ display:"flex", gap:".6rem", alignItems:"flex-start" }}>
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--copper)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0, marginTop:".14rem" }}>
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <div>
+              <div style={{ fontSize:".72rem", fontWeight:600, color:"var(--copper)", marginBottom:".3rem", letterSpacing:".04em" }}>誠摯的預約守則</div>
+              <p style={{ fontSize:".7rem", color:"var(--ink2)", lineHeight:1.75, margin:0 }}>
+                為保障您的體驗品質，我們嚴格控管每一位設計師的服務時長。若遇現場與預約登錄時間有細微落差，我們將竭盡所能優先為您調整安排。如造成您的等候，誠摯感謝您的體諒；我們堅持不趕工、不馬虎，只為將最好的髮型呈現給您。
+              </p>
+            </div>
+          </div>
+          {/* Arrow */}
+          <div style={{ position:"absolute", bottom:-7, right:6, width:13, height:13, background:"var(--card)", borderBottom:"3px solid var(--copper)", borderRight:"none", borderLeft:"none", transform:"rotate(45deg)", borderTop:"none" }}/>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NavBtns({ onBack, onNext, nextDisabled, nextLabel="下一步 →", isMobile, showInfo=false }) {
+  return (
+    <div style={{ display:"flex", justifyContent:"space-between", marginTop:"2rem", gap:".6rem", alignItems:"center" }}>
       {onBack
         ? <button onClick={onBack} className="btn-ghost" style={{ padding:isMobile?".65rem 1.1rem":".72rem 1.5rem" }}>← 返回</button>
         : <div/>
       }
       {onNext && (
-        <button disabled={nextDisabled} onClick={onNext}
-          className="btn-copper"
-          style={{ opacity:nextDisabled?.38:1, cursor:nextDisabled?"not-allowed":"pointer", padding:isMobile?".7rem 1.5rem":".75rem 2.2rem", fontSize:isMobile?".88rem":"1rem" }}>
-          {nextLabel}
-        </button>
+        <div style={{ display:"flex", alignItems:"center", gap:".5rem" }}>
+          {showInfo && <PolicyTooltip isMobile={isMobile}/>}
+          <button disabled={nextDisabled} onClick={onNext}
+            className="btn-copper"
+            style={{ opacity:nextDisabled?.38:1, cursor:nextDisabled?"not-allowed":"pointer", padding:isMobile?".7rem 1.5rem":".75rem 2.2rem", fontSize:isMobile?".88rem":"1rem" }}>
+            {nextLabel}
+          </button>
+        </div>
       )}
     </div>
   );
