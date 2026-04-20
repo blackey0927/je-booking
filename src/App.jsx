@@ -660,8 +660,41 @@ function useServices() {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   CUSTOMERS HOOK
+   SERVICE PHOTOS HOOK  (je_svc_photos in Firebase)
 ═══════════════════════════════════════════════════════════ */
+function useSvcPhotos() {
+  const [photos, setPhotos] = useState({});
+
+  useEffect(() => {
+    return fbListen("je_svc_photos", val => {
+      if (val && typeof val === "object") setPhotos(val);
+    });
+  }, []);
+
+  const setPhoto = async (svcId, dataUrl) => {
+    const compressed = await compressImage(dataUrl, 600, 0.82);
+    setPhotos(prev => ({ ...prev, [svcId]: compressed }));
+    const db = await getFirebaseDB();
+    if (db) {
+      const { ref, get, set } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
+      const snap = await get(ref(db, "je_svc_photos"));
+      await set(ref(db, "je_svc_photos"), { ...(snap.val()||{}), [svcId]: compressed });
+    }
+  };
+
+  const removePhoto = async (svcId) => {
+    setPhotos(prev => { const n={...prev}; delete n[svcId]; return n; });
+    const db = await getFirebaseDB();
+    if (db) {
+      const { ref, get, set } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
+      const snap = await get(ref(db, "je_svc_photos"));
+      const next = { ...(snap.val()||{}) }; delete next[svcId];
+      await set(ref(db, "je_svc_photos"), next);
+    }
+  };
+
+  return { photos, setPhoto, removePhoto };
+}
 function useCustomers() {
   const [customers, setCustomers] = useState({});
 
@@ -834,7 +867,7 @@ function AdminLockScreen({ onUnlock, isMobile }) {
 /* ═══════════════════════════════════════════════════════════
    BOOKING FLOW (5 steps)
 ═══════════════════════════════════════════════════════════ */
-function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEFAULT_STYLISTS, services=DEFAULT_SERVICES }) {
+function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEFAULT_STYLISTS, services=DEFAULT_SERVICES, svcPhotos={} }) {
   // step -1 = LINE 設定前置步驟, 0 = 選服務, 1 = 選設計師, ...
   const [step, setStep] = useState(-1);
   const [sel, setSel]   = useState({ services:[], stylist:null, date:null, time:null });
@@ -1045,6 +1078,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
           <div style={{ display:"grid", gridTemplateColumns: isMobile?"1fr 1fr":"repeat(3,1fr)", gap:isMobile?".75rem":"1rem" }}>
             {SERVICES_LOCAL.map((svc,si) => {
               const active = sel.services.includes(svc.id);
+              const photo  = svcPhotos[svc.id];
               return (
                 <button key={svc.id} onClick={()=>setSel(p=>{
                   const next = p.services.includes(svc.id)
@@ -1053,27 +1087,44 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
                   return {...p, services:next, stylist:null, date:null, time:null};
                 })}
                   className={`svc-card fade-up fade-up-${Math.min(si+1,6)}${active?" active":""}`}
-                  style={{ display:"flex", flexDirection:"column", gap:0, padding:0, textAlign:"left", WebkitTapHighlightColor:"transparent" }}>
-                  <div className="accent-bar"/>
-                  <div style={{ padding:isMobile?".85rem .9rem .65rem":"1rem 1.1rem .8rem", borderBottom:"1px solid var(--line)", flex:1 }}>
-                    <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:".55rem" }}>
-                      <span style={{ fontSize:isMobile?"1.25rem":"1.45rem", lineHeight:1 }}>{svc.icon}</span>
-                      <div style={{ display:"flex", gap:".3rem", alignItems:"center" }}>
-                        {active && <span style={{ fontSize:".7rem", background:"var(--copper)", color:"#fff", borderRadius:"50%", width:16, height:16, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700 }}>✓</span>}
-                        <span style={{ fontSize:".86rem", padding:".15rem .45rem", borderRadius:20, background:active?`rgba(${hexToRgb(svc.color)},.12)`:"var(--bg2)", color:active?svc.color:"var(--ink3)", border:`1px solid ${active?`rgba(${hexToRgb(svc.color)},.25)`:"var(--line)"}`, letterSpacing:".04em" }}>{svc.category}</span>
-                      </div>
+                  style={{ display:"flex", flexDirection:"column", gap:0, padding:0, textAlign:"left", WebkitTapHighlightColor:"transparent", overflow:"hidden" }}>
+
+                  {/* ── 封面圖片區 ── */}
+                  <div style={{ position:"relative", height: isMobile?90:110, overflow:"hidden", flexShrink:0 }}>
+                    {photo
+                      ? <img src={photo} alt={svc.zh} style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }}/>
+                      : <div style={{ position:"absolute", inset:0, background:`linear-gradient(135deg, rgba(${hexToRgb(svc.color)},.22) 0%, rgba(${hexToRgb(svc.color)},.07) 100%)`, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                          <span style={{ fontSize:isMobile?"2.2rem":"2.8rem", opacity:.55 }}>{svc.icon}</span>
+                        </div>
+                    }
+                    {/* 漸層遮罩 */}
+                    <div style={{ position:"absolute", inset:0, background:"linear-gradient(to bottom, transparent 40%, rgba(14,10,6,.55) 100%)" }}/>
+                    {/* 分類 + 勾選 badge */}
+                    <div style={{ position:"absolute", top:".5rem", right:".5rem", display:"flex", gap:".3rem", alignItems:"center" }}>
+                      {active && <span style={{ width:18, height:18, borderRadius:"50%", background:"var(--copper)", color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontSize:".65rem", fontWeight:700, boxShadow:"0 1px 4px rgba(0,0,0,.3)" }}>✓</span>}
+                      <span style={{ fontSize:".62rem", padding:".12rem .4rem", borderRadius:20, background:active?"var(--copper)":"rgba(14,10,6,.5)", color:"#fff", backdropFilter:"blur(4px)", letterSpacing:".04em" }}>{svc.category}</span>
                     </div>
-                    <div style={{ fontFamily:"'Playfair Display',serif", fontSize:isMobile?".9rem":"1rem", fontWeight:500, color:active?"var(--copper)":"var(--ink)", marginBottom:".35rem" }}>{svc.zh}</div>
-                    <div style={{ fontSize:".84rem", color:"var(--ink3)", lineHeight:1.62 }}>{svc.desc}</div>
+                    {/* 時段限制 */}
                     {svc.timeFrom > 0 && (
-                      <div style={{ marginTop:".3rem", fontSize:".7rem", color:"var(--copper)", display:"flex", alignItems:"center", gap:".2rem" }}>
-                        ⏰ 僅接受 {minsToTime(svc.timeFrom)} 後預約
+                      <div style={{ position:"absolute", top:".5rem", left:".5rem", fontSize:".6rem", padding:".1rem .38rem", borderRadius:20, background:"rgba(196,131,90,.85)", color:"#fff", backdropFilter:"blur(4px)" }}>
+                        ⏰ {minsToTime(svc.timeFrom)}後
                       </div>
                     )}
+                    {/* 服務名稱浮層 */}
+                    <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:isMobile?".35rem .55rem":".4rem .65rem" }}>
+                      <div style={{ fontFamily:"'Playfair Display',serif", fontSize:isMobile?".82rem":".92rem", fontWeight:500, color:"#fff", textShadow:"0 1px 3px rgba(0,0,0,.5)", lineHeight:1.2 }}>{svc.zh}</div>
+                    </div>
+                    {/* 選中光暈邊框 */}
+                    {active && <div style={{ position:"absolute", inset:0, border:"2px solid var(--copper)", borderRadius:"inherit", pointerEvents:"none" }}/>}
                   </div>
-                  <div style={{ padding:isMobile?".55rem .9rem":".65rem 1.1rem", display:"flex", alignItems:"center", justifyContent:"space-between", background:active?"var(--copper-bg)":"var(--bg)", transition:"background .2s" }}>
-                    <span style={{ fontSize:".70rem", color:"var(--ink3)", fontFamily:"'DM Mono',monospace" }}>{svc.duration}min</span>
-                    <span style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:isMobile?".92rem":".98rem", fontWeight:600, color:active?"var(--copper)":svc.color }}>{svc.price}<span style={{ fontSize:".75em", fontWeight:400 }}>{svc.priceNote}</span></span>
+
+                  {/* ── 資訊列 ── */}
+                  <div style={{ padding:isMobile?".45rem .55rem":".55rem .65rem", display:"flex", flexDirection:"column", gap:".2rem", flex:1, background: active?"var(--copper-bg)":"var(--bg)", transition:"background .2s" }}>
+                    <div style={{ fontSize:isMobile?".7rem":".74rem", color:"var(--ink3)", lineHeight:1.5 }}>{svc.desc}</div>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:"auto", paddingTop:".2rem" }}>
+                      <span style={{ fontSize:".66rem", color:"var(--ink4)", fontFamily:"'DM Mono',monospace" }}>{svc.duration}min</span>
+                      <span style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:isMobile?".88rem":".95rem", fontWeight:600, color:active?"var(--copper)":svc.color }}>{svc.price}<span style={{ fontSize:".75em", fontWeight:400 }}>{svc.priceNote}</span></span>
+                    </div>
                   </div>
                 </button>
               );
@@ -1666,21 +1717,31 @@ function ScheduleView({ bookings, isMobile, stylistSettings, onAddBooking, styli
       {/* Time grid */}
       <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:"var(--r)", overflow:"hidden", boxShadow:"var(--shadow)" }}>
         {/* Header */}
-        <div style={{ display:"grid", gridTemplateColumns:`60px repeat(${STYLISTS.length},1fr)`, borderBottom:"1px solid var(--line)", background:"var(--card)" }}>
-          <div style={{ padding:".6rem .3rem", fontSize:"1.32rem", color:"var(--ink3)", textAlign:"center", display:"flex", alignItems:"center", justifyContent:"center" }}>時間</div>
+        <div style={{ display:"grid", gridTemplateColumns:`60px repeat(${STYLISTS.length},1fr)`, borderBottom:"2px solid var(--line)", background:"var(--card)" }}>
+          <div style={{ padding:".6rem .3rem", fontSize:".7rem", color:"var(--ink3)", textAlign:"center", display:"flex", alignItems:"center", justifyContent:"center", letterSpacing:".1em" }}>時間</div>
           {STYLISTS.map(st=>{
             const photo = stylistSettings?.[st.id]?.photo;
             const isWorkToday = isStylistAvailable(st, viewDate, stylistSettings);
             return (
-              <div key={st.id} style={{ padding:".65rem .3rem", borderLeft:"1px solid var(--line)", textAlign:"center", display:"flex", flexDirection:"column", alignItems:"center", gap:".3rem", opacity:isWorkToday?1:.45 }}>
-                <div style={{ width:36, height:36, borderRadius:"50%", overflow:"hidden", border:`2px solid ${isWorkToday?`rgba(${hexToRgb(st.color)},.35)`:"var(--line)"}`, background:`rgba(${hexToRgb(st.color)},.08)`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                  {photo
-                    ? <img src={photo} alt={st.name} style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
-                    : <span style={{ fontSize:"1.38rem", lineHeight:1 }}>{st.icon}</span>
-                  }
+              <div key={st.id} style={{ position:"relative", height: isMobile?80:100, borderLeft:"1px solid var(--line)", overflow:"hidden", opacity:isWorkToday?1:.5 }}>
+                {/* 滿版背景照片 */}
+                {photo
+                  ? <img src={photo} alt={st.name} style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover", objectPosition:"center top" }}/>
+                  : <div style={{ position:"absolute", inset:0, background:`linear-gradient(135deg,rgba(${hexToRgb(st.color)},.2),rgba(${hexToRgb(st.color)},.05))`, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                      <span style={{ fontSize:isMobile?"1.8rem":"2.2rem", opacity:.35 }}>{st.icon}</span>
+                    </div>
+                }
+                {/* 下方漸層遮罩 */}
+                <div style={{ position:"absolute", inset:0, background:"linear-gradient(to bottom, transparent 30%, rgba(12,8,4,.75) 100%)" }}/>
+                {/* 姓名 + 狀態 */}
+                <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:isMobile?".3rem .4rem":".4rem .55rem" }}>
+                  <div style={{ fontSize:isMobile?".7rem":".8rem", fontWeight:600, color:"#fff", textShadow:"0 1px 3px rgba(0,0,0,.5)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{st.name}</div>
+                  {!isWorkToday && (
+                    <div style={{ fontSize:".58rem", color:"rgba(255,200,150,.8)", letterSpacing:".04em" }}>休假</div>
+                  )}
                 </div>
-                <div style={{ fontSize:".84rem", color:isWorkToday?st.color:"var(--ink3)", fontWeight:isWorkToday?500:400, whiteSpace:"nowrap" }}>{st.name}</div>
-                {!isWorkToday && <div style={{ fontSize:".86rem", color:"var(--ink4)", letterSpacing:".06em" }}>休假</div>}
+                {/* 主題色邊框指示 */}
+                <div style={{ position:"absolute", bottom:0, left:0, right:0, height:2, background:isWorkToday?st.color:"transparent" }}/>
               </div>
             );
           })}
@@ -1948,55 +2009,64 @@ function StylistRoster({ bookings, isMobile, stylistMgr, stylistsMgr }) {
           };
 
           return (
-            <div key={st.id} style={{ background:"var(--card)", border:`1px solid rgba(${hexToRgb(st.color||"#c4835a")},.2)`, borderRadius:"var(--r)", overflow:"hidden", boxShadow:"var(--shadow)" }}>
-              {/* Header */}
-              <div style={{ padding:"1rem", background:`rgba(${hexToRgb(st.color||"#c4835a")},.05)`, borderBottom:"1px solid var(--line)" }}>
-                <div style={{ display:"flex", alignItems:"center", gap:".9rem" }}>
-                  {/* Photo */}
-                  <div style={{ position:"relative", flexShrink:0 }}>
-                    <div style={{ width:60, height:60, borderRadius:"50%", overflow:"hidden", border:`2px solid rgba(${hexToRgb(st.color||"#c4835a")},.3)`, background:`rgba(${hexToRgb(st.color||"#c4835a")},.08)`, display:"flex", alignItems:"center", justifyContent:"center" }}>
-                      {eff.photo ? <img src={eff.photo} alt={st.name} style={{ width:"100%", height:"100%", objectFit:"cover" }}/> : <span style={{ fontSize:"1.95rem", lineHeight:1 }}>{st.icon||"💇"}</span>}
+            <div key={st.id} style={{ background:"var(--card)", border:`1px solid rgba(${hexToRgb(st.color||"#c4835a")},.18)`, borderRadius:"var(--r)", overflow:"hidden", boxShadow:"var(--shadow)" }}>
+
+              {/* ── 滿版封面照片區 ── */}
+              <div style={{ position:"relative", height: isMobile?160:200, background:`linear-gradient(135deg, rgba(${hexToRgb(st.color||"#c4835a")},.18) 0%, rgba(${hexToRgb(st.color||"#c4835a")},.06) 100%)`, overflow:"hidden" }}>
+                {/* 背景照片 */}
+                {eff.photo
+                  ? <img src={eff.photo} alt={st.name} style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover", objectPosition:"center top" }}/>
+                  : <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                      <span style={{ fontSize:isMobile?"4rem":"5rem", opacity:.25 }}>{st.icon||"💇"}</span>
                     </div>
-                    <label style={{ position:"absolute", bottom:0, right:-2, width:20, height:20, borderRadius:"50%", background:st.color||"var(--copper)", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:"1.32rem", color:"#fff", border:"2px solid #fff" }} title="上傳照片">
-                      ＋<input type="file" accept="image/*" style={{ display:"none" }} onChange={handlePhotoUpload}/>
-                    </label>
-                  </div>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.32rem", fontWeight:500, color:"var(--ink)" }}>{st.name}</div>
-                    <div style={{ fontSize:".86rem", color:st.color||"var(--copper)" }}>{st.title}{st.exp?` · ${st.exp}經驗`:""}</div>
-                    <div style={{ marginTop:".28rem" }}>
-                      <span style={{ padding:".12rem .5rem", borderRadius:20, fontSize:".70rem", background:isWorkToday?"rgba(160,196,184,.15)":"rgba(196,160,160,.1)", color:isWorkToday?"#5a9a8a":"#a06060", border:`1px solid ${isWorkToday?"rgba(160,196,184,.3)":"rgba(196,160,160,.25)"}` }}>
-                        {isWorkToday?"今日上班":"今日休假"}
-                      </span>
-                    </div>
-                  </div>
-                  <div style={{ display:"flex", flexDirection:"column", gap:".4rem" }}>
-                    <button onClick={()=>setEditId(isEditing?null:st.id)}
-                      style={{ padding:".28rem .7rem", borderRadius:20, fontSize:".84rem", background:isEditing?`rgba(${hexToRgb(st.color||"#c4835a")},.12)`:"rgba(0,0,0,.04)", color:isEditing?st.color||"var(--copper)":"var(--ink3)", border:`1px solid ${isEditing?`rgba(${hexToRgb(st.color||"#c4835a")},.35)`:"var(--line)"}`, cursor:"pointer" }}>
-                      {isEditing?"完成":"✏ 排班"}
-                    </button>
-                    {stylistsMgr && (
-                      <button onClick={()=>openEditStylist(st)}
-                        style={{ padding:".28rem .7rem", borderRadius:20, fontSize:".72rem", background:"rgba(196,131,90,.08)", color:"var(--copper)", border:"1px solid rgba(196,131,90,.25)", cursor:"pointer" }}>
-                        ✎ 編輯
-                      </button>
-                    )}
-                    {stylistsMgr && (
-                      <button onClick={()=>{
-                        const isOriginal = !st.id.startsWith("st_");
-                        const msg = isOriginal
-                          ? `確定刪除預設設計師 ${st.name}？`
-                          : `確定刪除 ${st.name}？`;
-                        if(confirm(msg)) stylistsMgr.deleteStylist(st.id);
-                      }}
-                        style={{ padding:".28rem .7rem", borderRadius:20, fontSize:".72rem", background:"rgba(196,100,100,.08)", color:"#c46060", border:"1px solid rgba(196,100,100,.25)", cursor:"pointer" }}>
-                        🗑 刪除
-                      </button>
-                    )}
+                }
+                {/* 漸層遮罩 */}
+                <div style={{ position:"absolute", inset:0, background:"linear-gradient(to bottom, transparent 40%, rgba(14,10,6,.72) 100%)" }}/>
+
+                {/* 姓名 + 職稱 浮層 */}
+                <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:isMobile?".7rem .85rem":".85rem 1rem" }}>
+                  <div style={{ fontFamily:"'Playfair Display',serif", fontSize:isMobile?"1.25rem":"1.45rem", fontWeight:500, color:"#fff", letterSpacing:".04em", lineHeight:1.15, textShadow:"0 1px 4px rgba(0,0,0,.4)" }}>{st.name}</div>
+                  <div style={{ fontSize:isMobile?".72rem":".78rem", color:`rgba(${hexToRgb(st.color||"#c8a97e")},.9)`, marginTop:".18rem", letterSpacing:".06em" }}>
+                    {st.title}{st.exp ? ` · ${st.exp}經驗` : ""}
                   </div>
                 </div>
-              </div>
 
+                {/* 上班狀態 badge */}
+                <div style={{ position:"absolute", top:".7rem", left:".7rem" }}>
+                  <span style={{ padding:".2rem .6rem", borderRadius:20, fontSize:".68rem", fontWeight:500, background:isWorkToday?"rgba(6,199,85,.85)":"rgba(80,60,50,.7)", color:"#fff", backdropFilter:"blur(4px)", letterSpacing:".04em" }}>
+                    {isWorkToday ? "今日上班" : "今日休假"}
+                  </span>
+                </div>
+
+                {/* 操作按鈕群組 */}
+                <div style={{ position:"absolute", top:".6rem", right:".6rem", display:"flex", flexDirection:"column", gap:".3rem" }}>
+                  <button onClick={()=>setEditId(isEditing?null:st.id)}
+                    style={{ padding:".22rem .55rem", borderRadius:20, fontSize:".7rem", background:isEditing?"rgba(196,131,90,.9)":"rgba(14,10,6,.55)", color:isEditing?"#fff":"rgba(255,255,255,.85)", border:`1px solid ${isEditing?"rgba(196,131,90,.6)":"rgba(255,255,255,.2)"}`, cursor:"pointer", backdropFilter:"blur(4px)", whiteSpace:"nowrap" }}>
+                    {isEditing ? "完成" : "✏ 排班"}
+                  </button>
+                  {stylistsMgr && (
+                    <button onClick={()=>openEditStylist(st)}
+                      style={{ padding:".22rem .55rem", borderRadius:20, fontSize:".7rem", background:"rgba(14,10,6,.55)", color:"rgba(255,255,255,.85)", border:"1px solid rgba(255,255,255,.2)", cursor:"pointer", backdropFilter:"blur(4px)" }}>
+                      ✎ 編輯
+                    </button>
+                  )}
+                  {stylistsMgr && (
+                    <button onClick={()=>{
+                      const isOriginal = !st.id.startsWith("st_");
+                      const msg = isOriginal ? `確定刪除預設設計師 ${st.name}？` : `確定刪除 ${st.name}？`;
+                      if(confirm(msg)) stylistsMgr.deleteStylist(st.id);
+                    }}
+                      style={{ padding:".22rem .55rem", borderRadius:20, fontSize:".7rem", background:"rgba(196,60,60,.6)", color:"#fff", border:"1px solid rgba(196,60,60,.4)", cursor:"pointer", backdropFilter:"blur(4px)" }}>
+                      🗑 刪除
+                    </button>
+                  )}
+                </div>
+
+                {/* 上傳照片按鈕 */}
+                <label style={{ position:"absolute", bottom:".7rem", right:".7rem", width:28, height:28, borderRadius:"50%", background:st.color||"var(--copper)", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#fff", fontSize:".85rem", border:"2px solid rgba(255,255,255,.6)", boxShadow:"0 2px 8px rgba(0,0,0,.3)" }} title="更換照片">
+                  ＋<input type="file" accept="image/*" style={{ display:"none" }} onChange={handlePhotoUpload}/>
+                </label>
+              </div>
               {/* Bio */}
               {st.bio && <div style={{ padding:".75rem 1rem", borderBottom:"1px solid var(--line)", fontSize:".71rem", color:"var(--ink2)", lineHeight:1.75 }}>{st.bio}</div>}
 
@@ -2098,7 +2168,7 @@ function StylistRoster({ bookings, isMobile, stylistMgr, stylistsMgr }) {
 /* ═══════════════════════════════════════════════════════════
    SERVICES MENU
 ═══════════════════════════════════════════════════════════ */
-function ServicesMenu({ isMobile, servicesMgr }) {
+function ServicesMenu({ isMobile, servicesMgr, svcPhotosMgr, svcPhotos={} }) {
   const services   = servicesMgr ? servicesMgr.services : SERVICES;
   const categories = [...new Set(services.map(s=>s.category))];
   const [editId, setEditId]   = useState(null);
@@ -2229,16 +2299,49 @@ function ServicesMenu({ isMobile, servicesMgr }) {
               const isEditing = editId === svc.id;
               return (
                 <div key={svc.id} style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:"var(--r)", boxShadow:"var(--shadow)", overflow:"hidden" }}>
-                  {/* View row */}
-                  <div style={{ padding:"1rem 1.1rem", display:"flex", gap:".85rem", alignItems:"flex-start" }}>
-                    <span style={{ fontSize:"1.6rem", lineHeight:1, flexShrink:0, marginTop:".1rem" }}>{svc.icon}</span>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", marginBottom:".25rem" }}>
-                        <span style={{ fontFamily:"'Playfair Display',serif", fontSize:"1rem", fontWeight:500, color:"var(--ink)" }}>{svc.zh}</span>
-                        <span style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:".95rem", color:"var(--copper)", fontWeight:600, flexShrink:0, marginLeft:".5rem" }}>
-                          {svc.price}<span style={{ fontSize:".7em" }}>{svc.priceNote}</span>
-                        </span>
+
+                  {/* ── 封面圖片區（管理頁） ── */}
+                  <div style={{ position:"relative", height:120, overflow:"hidden" }}>
+                    {svcPhotos[svc.id]
+                      ? <img src={svcPhotos[svc.id]} alt={svc.zh} style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }}/>
+                      : <div style={{ position:"absolute", inset:0, background:`linear-gradient(135deg,rgba(${hexToRgb(svc.color||"#c4835a")},.18) 0%,rgba(${hexToRgb(svc.color||"#c4835a")},.05) 100%)`, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                          <span style={{ fontSize:"2.8rem", opacity:.4 }}>{svc.icon}</span>
+                        </div>
+                    }
+                    <div style={{ position:"absolute", inset:0, background:"linear-gradient(to bottom, transparent 35%, rgba(14,10,6,.6) 100%)" }}/>
+                    {/* 服務名稱 + 價格 浮層 */}
+                    <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:".55rem .75rem", display:"flex", alignItems:"flex-end", justifyContent:"space-between" }}>
+                      <div>
+                        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1rem", fontWeight:500, color:"#fff", textShadow:"0 1px 3px rgba(0,0,0,.5)" }}>{svc.zh}</div>
+                        <div style={{ fontSize:".62rem", color:"rgba(255,255,255,.65)", marginTop:".1rem" }}>{svc.category}</div>
                       </div>
+                      <span style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:"1.05rem", color:"#ffd9a8", fontWeight:600, textShadow:"0 1px 3px rgba(0,0,0,.5)" }}>
+                        {svc.price}<span style={{ fontSize:".75em" }}>{svc.priceNote}</span>
+                      </span>
+                    </div>
+                    {/* 上傳圖片按鈕（管理員限定）*/}
+                    {svcPhotosMgr && (
+                      <div style={{ position:"absolute", top:".5rem", right:".5rem", display:"flex", gap:".3rem" }}>
+                        <label style={{ padding:".22rem .5rem", borderRadius:20, fontSize:".68rem", background:"rgba(14,10,6,.55)", color:"rgba(255,255,255,.9)", border:"1px solid rgba(255,255,255,.2)", cursor:"pointer", backdropFilter:"blur(4px)", whiteSpace:"nowrap" }} title="上傳封面圖片">
+                          🖼 上傳
+                          <input type="file" accept="image/*" style={{ display:"none" }} onChange={async e=>{
+                            const file=e.target.files[0]; if(!file)return;
+                            const reader=new FileReader();
+                            reader.onload=ev=>svcPhotosMgr.setPhoto(svc.id, ev.target.result);
+                            reader.readAsDataURL(file);
+                          }}/>
+                        </label>
+                        {svcPhotos[svc.id] && (
+                          <button onClick={()=>svcPhotosMgr.removePhoto(svc.id)}
+                            style={{ padding:".22rem .5rem", borderRadius:20, fontSize:".68rem", background:"rgba(180,50,50,.7)", color:"#fff", border:"none", cursor:"pointer", backdropFilter:"blur(4px)" }}>✕</button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ── 資訊列 ── */}
+                  <div style={{ padding:".75rem 1rem", display:"flex", gap:".85rem", alignItems:"flex-start" }}>
+                    <div style={{ flex:1, minWidth:0 }}>
                       {svc.desc && <div style={{ fontSize:".74rem", color:"var(--ink3)", lineHeight:1.6, marginBottom:".35rem" }}>{svc.desc}</div>}
                       <div style={{ display:"flex", gap:".6rem", flexWrap:"wrap", alignItems:"center" }}>
                         <span style={{ fontSize:".68rem", color:"var(--ink3)", fontFamily:"'DM Mono',monospace" }}>⏱ {svc.duration}min</span>
@@ -2724,7 +2827,8 @@ export default function SalonApp() {
   const stylistsMgr  = useStylists();
   const STYLISTS     = stylistsMgr.stylists;
   const servicesMgr  = useServices();
-  SERVICES = servicesMgr.services; // update for components that don't take prop
+  const svcPhotosMgr = useSvcPhotos();
+  SERVICES = servicesMgr.services;
 
   // Wrap addBooking to also upsert customer
   const handleBook = (booking) => {
@@ -2961,8 +3065,8 @@ export default function SalonApp() {
         {!loaded
           ? <div style={{ textAlign:"center", padding:"4rem 1rem", color:"#999999", fontSize:"1.32rem" }}>載入中…</div>
           : <>
-              {tab==="book"     && <ErrorBoundary><BookingFlow bookings={bookings} onBook={handleBook} isMobile={isMobile} stylistSettings={stylistMgr.settings} stylists={STYLISTS} services={SERVICES}/></ErrorBoundary>}
-              {tab==="services" && <ServicesMenu isMobile={isMobile} servicesMgr={adminAuth.unlocked ? servicesMgr : null}/>}
+              {tab==="book"     && <ErrorBoundary><BookingFlow bookings={bookings} onBook={handleBook} isMobile={isMobile} stylistSettings={stylistMgr.settings} stylists={STYLISTS} services={SERVICES} svcPhotos={svcPhotosMgr.photos}/></ErrorBoundary>}
+              {tab==="services" && <ServicesMenu isMobile={isMobile} servicesMgr={adminAuth.unlocked ? servicesMgr : null} svcPhotosMgr={adminAuth.unlocked ? svcPhotosMgr : null} svcPhotos={svcPhotosMgr.photos}/>}
               {ADMIN_TABS.has(tab) && (
                 adminAuth.unlocked
                   ? <>
