@@ -524,13 +524,20 @@ function useStylistSettings() {
    SALON SETTINGS HOOK (logo)
 ═══════════════════════════════════════════════════════════ */
 function useSalonSettings() {
-  const [logo, setLogoState] = useState(null);
-  const [loaded, setLoaded]  = useState(false);
+  const [logo, setLogoState]               = useState(null);
+  const [loaded, setLoaded]                = useState(false);
+  const [landingPhotos, setLandingPhotos]  = useState({});  // { services: dataUrl, booking: dataUrl }
 
   useEffect(() => {
     return fbListen("je_salon_logo", val => {
       setLogoState(val || PHOTO_DEFAULTS.logo || null);
       setLoaded(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    return fbListen("je_landing_photos", val => {
+      if (val && typeof val === "object") setLandingPhotos(val);
     });
   }, []);
 
@@ -542,7 +549,21 @@ function useSalonSettings() {
 
   const removeLogo = () => { setLogoState(null); fbWrite("je_salon_logo", null); };
 
-  return { logo, loaded, setLogo, removeLogo };
+  const setLandingPhoto = async (key, dataUrl) => {
+    const compressed = await compressImage(dataUrl, 800, 0.85);
+    const next = { ...landingPhotos, [key]: compressed };
+    setLandingPhotos(next);
+    fbWrite("je_landing_photos", next);
+  };
+
+  const removeLandingPhoto = (key) => {
+    const next = { ...landingPhotos };
+    delete next[key];
+    setLandingPhotos(next);
+    fbWrite("je_landing_photos", next);
+  };
+
+  return { logo, loaded, setLogo, removeLogo, landingPhotos, setLandingPhoto, removeLandingPhoto };
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -867,7 +888,7 @@ function AdminLockScreen({ onUnlock, isMobile }) {
 /* ═══════════════════════════════════════════════════════════
    BOOKING FLOW (5 steps)
 ═══════════════════════════════════════════════════════════ */
-function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEFAULT_STYLISTS, services=DEFAULT_SERVICES, svcPhotos={} }) {
+function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEFAULT_STYLISTS, services=DEFAULT_SERVICES, svcPhotos={}, salonConfig={}, adminAuth={} }) {
   // step -1 = LINE 設定前置步驟, 0 = 選服務, 1 = 選設計師, ...
   const [step, setStep] = useState(-1);
   const [sel, setSel]   = useState({ services:[], stylist:null, date:null, time:null });
@@ -951,45 +972,125 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
 
             {/* 三欄卡片：服務 / 設計師 / 預約 */}
             <div style={{ display:"grid", gridTemplateColumns: isMobile?"1fr":"repeat(3,1fr)", gap:".75rem", marginBottom:"1.4rem" }}>
-              {/* 服務卡 */}
-              <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:12, overflow:"hidden", display:"flex", flexDirection: isMobile?"row":"column", alignItems: isMobile?"center":"stretch" }}>
-                <div style={{ background:`linear-gradient(135deg, rgba(160,196,184,.25) 0%, rgba(122,154,170,.12) 100%)`, padding: isMobile?".9rem 1rem":".9rem .8rem", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, minWidth: isMobile?64:"auto", minHeight: isMobile?"auto":80 }}>
-                  <span style={{ fontSize: isMobile?"1.6rem":"2rem" }}>✂️</span>
-                </div>
-                <div style={{ padding: isMobile?".6rem .8rem":".75rem .8rem" }}>
-                  <div style={{ fontSize:".78rem", fontWeight:600, color:"var(--ink)", marginBottom:".3rem", letterSpacing:".06em" }}>服務項目</div>
-                  <div style={{ fontSize:".7rem", color:"var(--ink3)", lineHeight:1.6 }}>剪髮・燙髮・染髮・護髮・SPA洗髮・修眉・證件照</div>
-                </div>
-              </div>
-              {/* 設計師卡 */}
-              <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:12, overflow:"hidden", display:"flex", flexDirection: isMobile?"row":"column", alignItems: isMobile?"center":"stretch" }}>
-                <div style={{ background:`linear-gradient(135deg, rgba(196,131,90,.2) 0%, rgba(196,188,154,.1) 100%)`, padding: isMobile?".9rem 1rem":".9rem .8rem", display:"flex", gap:".3rem", alignItems:"center", justifyContent:"center", flexShrink:0, minWidth: isMobile?64:"auto", minHeight: isMobile?"auto":80, flexWrap:"wrap" }}>
-                  {STYLISTS_LOCAL.slice(0,4).map(st=>(
-                    <div key={st.id} style={{ width: isMobile?24:28, height: isMobile?24:28, borderRadius:"50%", background:`rgba(${hexToRgb(st.color)},.2)`, border:`1px solid rgba(${hexToRgb(st.color)},.4)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize: isMobile?".78rem":".88rem" }}>
-                      {stylistSettings?.[st.id]?.photo
-                        ? <img src={stylistSettings[st.id].photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover", borderRadius:"50%" }}/>
-                        : st.icon}
+
+              {/* ── 服務卡：管理者可上傳封面圖 ── */}
+              {(() => {
+                const photo = salonConfig?.landingPhotos?.services;
+                const isAdmin = adminAuth?.unlocked;
+                return (
+                  <div style={{ position:"relative", background:"var(--card)", border:"1px solid var(--line)", borderRadius:12, overflow:"hidden", minHeight: isMobile?100:160, display:"flex", flexDirection:"column" }}>
+                    {/* 背景圖或漸層 */}
+                    {photo
+                      ? <img src={photo} alt="服務" style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }}/>
+                      : <div style={{ position:"absolute", inset:0, background:"linear-gradient(135deg, rgba(160,196,184,.35) 0%, rgba(122,154,170,.18) 100%)" }}/>
+                    }
+                    {/* 遮罩 */}
+                    <div style={{ position:"absolute", inset:0, background: photo?"linear-gradient(to bottom, rgba(14,10,6,.08) 0%, rgba(14,10,6,.72) 100%)":"linear-gradient(to bottom, transparent 40%, rgba(248,245,241,.9) 100%)" }}/>
+                    {/* 管理員上傳按鈕 */}
+                    {isAdmin && (
+                      <label style={{ position:"absolute", top:".5rem", right:".5rem", zIndex:10, cursor:"pointer" }} title="更換服務封面圖">
+                        <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(0,0,0,.55)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:".78rem", backdropFilter:"blur(4px)", border:"1px solid rgba(255,255,255,.2)" }}>📷</div>
+                        <input type="file" accept="image/*" style={{ display:"none" }} onChange={e=>{
+                          const file=e.target.files[0]; if(!file)return;
+                          const r=new FileReader(); r.onload=ev=>salonConfig.setLandingPhoto("services",ev.target.result); r.readAsDataURL(file);
+                        }}/>
+                      </label>
+                    )}
+                    {isAdmin && photo && (
+                      <button onClick={()=>salonConfig.removeLandingPhoto("services")} style={{ position:"absolute", top:".5rem", right:"2.4rem", zIndex:10, width:28, height:28, borderRadius:"50%", background:"rgba(0,0,0,.55)", border:"1px solid rgba(255,255,255,.2)", color:"#fff", fontSize:".72rem", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
+                    )}
+                    {/* 無圖時中央大圖示 */}
+                    {!photo && (
+                      <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                        <span style={{ fontSize:isMobile?"2.2rem":"2.8rem", opacity:.45 }}>✂️</span>
+                      </div>
+                    )}
+                    {/* 底部文字 */}
+                    <div style={{ position:"relative", zIndex:2, marginTop:"auto", padding: isMobile?".65rem .85rem":".75rem .9rem" }}>
+                      <div style={{ fontSize:".78rem", fontWeight:600, color: photo?"#fff":"var(--ink)", letterSpacing:".06em", marginBottom:".25rem", textShadow: photo?"0 1px 4px rgba(0,0,0,.5)":"none" }}>服務項目</div>
+                      <div style={{ fontSize:".68rem", color: photo?"rgba(255,255,255,.8)":"var(--ink3)", lineHeight:1.55 }}>剪髮・燙髮・染髮・護髮・SPA・修眉・證件照</div>
                     </div>
-                  ))}
-                </div>
-                <div style={{ padding: isMobile?".6rem .8rem":".75rem .8rem" }}>
-                  <div style={{ fontSize:".78rem", fontWeight:600, color:"var(--ink)", marginBottom:".3rem", letterSpacing:".06em" }}>設計師團隊</div>
-                  <div style={{ fontSize:".7rem", color:"var(--ink3)", lineHeight:1.6 }}>
-                    {STYLISTS_LOCAL.map(s=>s.name).join("・")}
                   </div>
+                );
+              })()}
+
+              {/* ── 設計師卡：滿版均分顯示每位設計師 ── */}
+              <div style={{ position:"relative", borderRadius:12, overflow:"hidden", minHeight: isMobile?120:160, display:"flex", flexDirection:"column", border:"1px solid var(--line)" }}>
+                {STYLISTS_LOCAL.length === 0
+                  ? <div style={{ flex:1, background:"linear-gradient(135deg, rgba(196,131,90,.2) 0%, rgba(196,188,154,.1) 100%)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                      <span style={{ fontSize:"2rem", opacity:.4 }}>👤</span>
+                    </div>
+                  : <div style={{ display:"flex", flex:1, minHeight: isMobile?100:130 }}>
+                      {STYLISTS_LOCAL.map((st, idx) => {
+                        const photo = stylistSettings?.[st.id]?.photo;
+                        const pct = `${100 / STYLISTS_LOCAL.length}%`;
+                        return (
+                          <div key={st.id} style={{ position:"relative", flex:1, overflow:"hidden", borderRight: idx < STYLISTS_LOCAL.length-1 ? "1px solid rgba(255,255,255,.25)" : "none", minWidth:0 }}>
+                            {/* 照片或漸層 */}
+                            {photo
+                              ? <img src={photo} alt={st.name} style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover", objectPosition:"top center" }}/>
+                              : <div style={{ position:"absolute", inset:0, background:`linear-gradient(160deg, rgba(${hexToRgb(st.color)},.45) 0%, rgba(28,24,22,.7) 100%)`, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                                  <span style={{ fontSize:isMobile?"1.4rem":"1.8rem", opacity:.65 }}>{st.icon}</span>
+                                </div>
+                            }
+                            {/* 底部遮罩 */}
+                            <div style={{ position:"absolute", inset:0, background:"linear-gradient(to bottom, transparent 40%, rgba(14,10,6,.82) 100%)" }}/>
+                            {/* 姓名 */}
+                            <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:isMobile?".35rem .3rem":".45rem .4rem", textAlign:"center" }}>
+                              <div style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:isMobile?".72rem":".82rem", fontWeight:500, color:"#fff", textShadow:"0 1px 3px rgba(0,0,0,.6)", lineHeight:1.1, letterSpacing:".04em" }}>{st.name}</div>
+                              {!isMobile && STYLISTS_LOCAL.length <= 3 && (
+                                <div style={{ fontSize:".56rem", color:`rgba(${hexToRgb(st.color)},1)`, marginTop:".1rem", letterSpacing:".04em", fontWeight:500 }}>{st.title}</div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                }
+                {/* 底部文字列 */}
+                <div style={{ background:"var(--card)", padding:".5rem .85rem", borderTop:"1px solid var(--line)" }}>
+                  <div style={{ fontSize:".78rem", fontWeight:600, color:"var(--ink)", letterSpacing:".06em", marginBottom:".15rem" }}>設計師團隊</div>
+                  <div style={{ fontSize:".68rem", color:"var(--ink3)" }}>{STYLISTS_LOCAL.map(s=>s.name).join("・")}</div>
                 </div>
               </div>
-              {/* 預約說明卡 */}
-              <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:12, overflow:"hidden", display:"flex", flexDirection: isMobile?"row":"column", alignItems: isMobile?"center":"stretch" }}>
-                <div style={{ background:`linear-gradient(135deg, rgba(180,160,196,.2) 0%, rgba(160,184,196,.1) 100%)`, padding: isMobile?".9rem 1rem":".9rem .8rem", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, minWidth: isMobile?64:"auto", minHeight: isMobile?"auto":80 }}>
-                  <span style={{ fontSize: isMobile?"1.6rem":"2rem" }}>📅</span>
-                </div>
-                <div style={{ padding: isMobile?".6rem .8rem":".75rem .8rem" }}>
-                  <div style={{ fontSize:".78rem", fontWeight:600, color:"var(--ink)", marginBottom:".3rem", letterSpacing:".06em" }}>線上預約</div>
-                  <div style={{ fontSize:".7rem", color:"var(--ink3)", lineHeight:1.6 }}>選服務 → 選設計師 → 選時間 → 完成</div>
-                </div>
-              </div>
-            </div>
+
+              {/* ── 線上預約卡：管理者可上傳封面圖 ── */}
+              {(() => {
+                const photo = salonConfig?.landingPhotos?.booking;
+                const isAdmin = adminAuth?.unlocked;
+                return (
+                  <div style={{ position:"relative", background:"var(--card)", border:"1px solid var(--line)", borderRadius:12, overflow:"hidden", minHeight: isMobile?100:160, display:"flex", flexDirection:"column" }}>
+                    {photo
+                      ? <img src={photo} alt="預約" style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }}/>
+                      : <div style={{ position:"absolute", inset:0, background:"linear-gradient(135deg, rgba(180,160,196,.3) 0%, rgba(160,184,196,.15) 100%)" }}/>
+                    }
+                    <div style={{ position:"absolute", inset:0, background: photo?"linear-gradient(to bottom, rgba(14,10,6,.08) 0%, rgba(14,10,6,.72) 100%)":"linear-gradient(to bottom, transparent 40%, rgba(248,245,241,.9) 100%)" }}/>
+                    {isAdmin && (
+                      <label style={{ position:"absolute", top:".5rem", right:".5rem", zIndex:10, cursor:"pointer" }} title="更換預約封面圖">
+                        <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(0,0,0,.55)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:".78rem", backdropFilter:"blur(4px)", border:"1px solid rgba(255,255,255,.2)" }}>📷</div>
+                        <input type="file" accept="image/*" style={{ display:"none" }} onChange={e=>{
+                          const file=e.target.files[0]; if(!file)return;
+                          const r=new FileReader(); r.onload=ev=>salonConfig.setLandingPhoto("booking",ev.target.result); r.readAsDataURL(file);
+                        }}/>
+                      </label>
+                    )}
+                    {isAdmin && photo && (
+                      <button onClick={()=>salonConfig.removeLandingPhoto("booking")} style={{ position:"absolute", top:".5rem", right:"2.4rem", zIndex:10, width:28, height:28, borderRadius:"50%", background:"rgba(0,0,0,.55)", border:"1px solid rgba(255,255,255,.2)", color:"#fff", fontSize:".72rem", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
+                    )}
+                    {!photo && (
+                      <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                        <span style={{ fontSize:isMobile?"2.2rem":"2.8rem", opacity:.45 }}>📅</span>
+                      </div>
+                    )}
+                    <div style={{ position:"relative", zIndex:2, marginTop:"auto", padding: isMobile?".65rem .85rem":".75rem .9rem" }}>
+                      <div style={{ fontSize:".78rem", fontWeight:600, color: photo?"#fff":"var(--ink)", letterSpacing:".06em", marginBottom:".25rem", textShadow: photo?"0 1px 4px rgba(0,0,0,.5)":"none" }}>線上預約</div>
+                      <div style={{ fontSize:".68rem", color: photo?"rgba(255,255,255,.8)":"var(--ink3)", lineHeight:1.55 }}>選服務 → 選設計師 → 選時間 → 完成</div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+            </div>{/* end grid */}
 
             {/* ── 誠摯預約守則 Info Card ── */}
             <div style={{
@@ -3253,7 +3354,7 @@ export default function SalonApp() {
         {!loaded
           ? <div style={{ textAlign:"center", padding:"4rem 1rem", color:"#999999", fontSize:"1.32rem" }}>載入中…</div>
           : <>
-              {tab==="book"     && <ErrorBoundary><BookingFlow bookings={bookings} onBook={handleBook} isMobile={isMobile} stylistSettings={stylistMgr.settings} stylists={STYLISTS} services={SERVICES} svcPhotos={svcPhotosMgr.photos}/></ErrorBoundary>}
+              {tab==="book"     && <ErrorBoundary><BookingFlow bookings={bookings} onBook={handleBook} isMobile={isMobile} stylistSettings={stylistMgr.settings} stylists={STYLISTS} services={SERVICES} svcPhotos={svcPhotosMgr.photos} salonConfig={salonConfig} adminAuth={adminAuth}/></ErrorBoundary>}
               {tab==="services" && <ServicesMenu isMobile={isMobile} servicesMgr={adminAuth.unlocked ? servicesMgr : null} svcPhotosMgr={adminAuth.unlocked ? svcPhotosMgr : null} svcPhotos={svcPhotosMgr.photos}/>}
               {ADMIN_TABS.has(tab) && (
                 adminAuth.unlocked
