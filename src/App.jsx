@@ -915,16 +915,18 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
   const memberStylist  = (m) => STYLISTS_LOCAL_OUTER.find(s=>s.id===m.stylist);
   const memberSlots    = (m) => {
     if (!m.stylist || !m.date || !m.services?.length) return [];
-    const dur   = memberDuration(m);
-    const dh    = getDayHours(m.date);
-    const isToday = formatDate(m.date) === formatDate(new Date());
-    const nowMins = isToday ? new Date().getHours()*60+new Date().getMinutes() : 0;
+    const dur     = memberDuration(m);
+    const dateObj = typeof m.date === "string" ? parseDate(m.date) : m.date;
+    const dh      = getDayHours(dateObj);
+    const todayStr = formatDate(new Date());
+    const isToday  = m.date === todayStr;
+    const nowMins  = isToday ? new Date().getHours()*60+new Date().getMinutes() : 0;
     return ALL_SLOTS.filter(slot=>{
       const sm = slotToMinutes(slot);
       if (sm < dh.open) return false;
       if (sm + dur > dh.close) return false;
       if (isToday && sm < nowMins+15) return false;
-      return isSlotAvailable(slot, m.stylist, m.date, bookings, dur);
+      return isSlotAvailable(slot, m.stylist, dateObj, bookings, dur);
     });
   };
   const memberComplete    = (m) => !!(m.name && m.services?.length && m.stylist && m.date && m.time);
@@ -973,7 +975,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
         serviceId:  m.services[0] || "",
         serviceIds: m.services,
         stylistId: m.stylist,
-        date: formatDate(m.date), time: m.time,
+        date: typeof m.date === "string" ? m.date : formatDate(m.date), time: m.time,
         customerName: form.name + "（" + m.name + "）",
         memberName: m.name,
         customerPhone: form.phone, lineId: form.lineId,
@@ -1434,7 +1436,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
                       </div>
                       {done && (
                         <div style={{ fontSize:".72rem", color:"var(--ink3)", marginTop:".1rem", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
-                          {svcs.map(s=>s.zh).join("＋")} · {stObj?.name} · {m.date} {m.time}
+                          {svcs.map(s=>s.zh).join("＋")} · {stObj?.name} · {m.date||""} {m.time||""}
                         </div>
                       )}
                       {!done && !isOpen && (
@@ -1543,11 +1545,11 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
                                     const isWork = stOb?.workDays.includes(dow);
                                     const isPast = dt < mToday;
                                     const dateStr = formatDate(dt);
-                                    const isSel   = m.date && formatDate(m.date)===dateStr;
+                                    const isSel   = m.date === dateStr;
                                     const disabled = isPast || !isWork;
                                     return (
                                       <button key={d} disabled={disabled}
-                                        onClick={()=>updateMember(idx,{date:dt,time:null})}
+                                        onClick={()=>updateMember(idx,{date:formatDate(dt),time:null})}
                                         style={{ padding:".28rem 0", borderRadius:6, border:"none", background:isSel?"var(--copper)":"none", color:isSel?"#fff":disabled?"var(--line)":"var(--ink)", fontWeight:isSel?700:400, fontSize:".76rem", cursor:disabled?"default":"pointer" }}>
                                         {d}
                                       </button>
