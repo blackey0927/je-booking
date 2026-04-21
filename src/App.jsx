@@ -307,7 +307,7 @@ function useBookings() {
 
   // ── 新增預約 ──
   const addBooking = useCallback(async (b) => {
-    const booking = { ...b, id: genId(), status: "pending", createdAt: new Date().toISOString() };
+    const booking = { status: "pending", ...b, id: genId(), createdAt: new Date().toISOString() };
     const db = await getFirebaseDB();
     if (db) {
       const { ref, set } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
@@ -992,6 +992,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
         stylistId: sel.stylist,
         date: formatDate(sel.date), time: sel.time,
         customerName: form.name, customerPhone: form.phone, lineId: form.lineId, notes: form.notes,
+        source: "online",
       };
       onBook(booking);
       setDone(booking);
@@ -1993,6 +1994,7 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
     serviceIds:["cut_male"], stylistId: STYLISTS[0].id,
     date: today, time:"10:00",
     customerName:"", customerPhone:"", notes:"", lineId:"",
+    source: "phone",
   });
   const [saved, setSaved] = useState(false);
 
@@ -2023,6 +2025,8 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
       date: form.date, time: form.time,
       customerName: form.customerName, customerPhone: form.customerPhone,
       lineId: form.lineId, notes: form.notes,
+      source: form.source,
+      status: "confirmed",
     });
     setSaved(true);
     setTimeout(() => { setSaved(false); onClose(); }, 1200);
@@ -2126,6 +2130,30 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
               ，傳送「<b>查詢我的預約</b>」即可取得。
             </div>
           </div>
+          {/* Source selector */}
+          <div>
+            <label className="field-label">預約來源</label>
+            <div style={{ display:"flex", gap:".4rem", flexWrap:"wrap" }}>
+              {[
+                { id:"phone",    label:"📞 電話" },
+                { id:"line_msg", label:"💬 LINE訊息" },
+                { id:"walkin",   label:"🚶 現場" },
+              ].map(s => (
+                <button key={s.id}
+                  onClick={() => setForm(p => ({ ...p, source: s.id }))}
+                  style={{
+                    padding:".3rem .75rem", borderRadius:20, fontSize:".84rem",
+                    border:`1px solid ${form.source===s.id?"var(--copper)":"var(--line)"}`,
+                    background: form.source===s.id?"var(--copper-bg)":"var(--card)",
+                    color: form.source===s.id?"var(--copper)":"var(--ink2)", cursor:"pointer",
+                    transition:"all .15s",
+                  }}>
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div>
             <label className="field-label">備注</label>
             <input value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} placeholder="特殊需求或備注" className="field-input"/>
@@ -3048,6 +3076,13 @@ function BookingCard({ booking, onUpdateStatus, onDelete, isMobile, lineSettings
         <span style={{ padding:".12rem .5rem", borderRadius:20, fontSize:".70rem", background:`rgba(${hexToRgb(STATUS_COLOR[booking.status])},.12)`, color:STATUS_COLOR[booking.status], border:`1px solid rgba(${hexToRgb(STATUS_COLOR[booking.status])},.25)` }}>
           {STATUS_LABEL[booking.status]}
         </span>
+        {booking.source && booking.source !== "online" && (
+          <span style={{ padding:".12rem .5rem", borderRadius:20, fontSize:".70rem",
+            background:"rgba(99,130,180,.1)", color:"#607090",
+            border:"1px solid rgba(99,130,180,.2)" }}>
+            {{ phone:"📞 電話", line_msg:"💬 LINE", walkin:"🚶 現場" }[booking.source] || booking.source}
+          </span>
+        )}
       </div>
       <div style={{ padding:".65rem .9rem", display:"grid", gridTemplateColumns: isMobile?"1fr":"1fr 1fr", gap:".3rem .8rem" }}>
         {[
