@@ -899,6 +899,37 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
   const [lineIdInput, setLineIdInput] = useState("");
   const [linePasted, setLinePasted]   = useState(false);
 
+  // ── 家庭/團體預約 ──
+  const [bookMode, setBookMode] = useState("single"); // "single" | "group"
+  const newMember = () => ({ id: Date.now(), name:"", services:[], stylist:null, date:null, time:null, calDate:{ y:new Date().getFullYear(), m:new Date().getMonth() } });
+  const [members, setMembers]   = useState([ newMember() ]);
+  const [activeMember, setActiveMember] = useState(0);
+  const [memberStep, setMemberStep] = useState(0); // 0=service 1=stylist 2=datetime
+
+  const SERVICES_LOCAL_OUTER = services;
+  const STYLISTS_LOCAL_OUTER = stylists;
+
+  const updateMember = (idx, patch) => setMembers(prev => prev.map((m,i) => i===idx ? {...m,...patch} : m));
+  const memberSvcs     = (m) => (m.services||[]).map(id=>SERVICES_LOCAL_OUTER.find(s=>s.id===id)).filter(Boolean);
+  const memberDuration = (m) => memberSvcs(m).reduce((sum,s)=>sum+(s.duration||0),0);
+  const memberStylist  = (m) => STYLISTS_LOCAL_OUTER.find(s=>s.id===m.stylist);
+  const memberSlots    = (m) => {
+    if (!m.stylist || !m.date || !m.services?.length) return [];
+    const dur   = memberDuration(m);
+    const dh    = getDayHours(m.date);
+    const isToday = formatDate(m.date) === formatDate(new Date());
+    const nowMins = isToday ? new Date().getHours()*60+new Date().getMinutes() : 0;
+    return ALL_SLOTS.filter(slot=>{
+      const sm = slotToMinutes(slot);
+      if (sm < dh.open) return false;
+      if (sm + dur > dh.close) return false;
+      if (isToday && sm < nowMins+15) return false;
+      return isSlotAvailable(slot, m.stylist, m.date, bookings, dur);
+    });
+  };
+  const memberComplete    = (m) => !!(m.name && m.services?.length && m.stylist && m.date && m.time);
+  const allMembersComplete = members.every(memberComplete);
+
   const today = new Date(); today.setHours(0,0,0,0);
 
   // Use prop-passed lists so updates are reactive
@@ -926,19 +957,44 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
     });
   }, [sel.stylist, sel.date, sel.services, bookings, totalDuration, selSvcs]);
 
-  const reset = () => { setStep(-1); setSel({services:[],stylist:null,date:null,time:null}); setForm({name:"",phone:"",lineId:"",notes:""}); setDone(null); setLineIdInput(""); setLinePasted(false); };
+  const reset = () => {
+    setStep(-1); setSel({services:[],stylist:null,date:null,time:null});
+    setForm({name:"",phone:"",lineId:"",notes:""});
+    setDone(null); setLineIdInput(""); setLinePasted(false);
+    setBookMode("single"); setMembers([newMember()]); setActiveMember(0); setMemberStep(0);
+  };
 
   const confirmBook = () => {
-    const booking = {
-      serviceId:  sel.services[0] || "",   // primary for backward compat
-      serviceIds: sel.services,             // multi-service array
-      stylistId: sel.stylist,
-      date: formatDate(sel.date), time: sel.time,
-      customerName: form.name, customerPhone: form.phone, lineId: form.lineId, notes: form.notes,
-    };
-    onBook(booking);
-    setDone(booking);
-    setStep(4);
+    if (bookMode === "group") {
+      const groupId = "grp_" + Date.now();
+      const doneList = members.map(m => ({
+        groupId,
+        groupSize: members.length,
+        serviceId:  m.services[0] || "",
+        serviceIds: m.services,
+        stylistId: m.stylist,
+        date: formatDate(m.date), time: m.time,
+        customerName: form.name + "（" + m.name + "）",
+        memberName: m.name,
+        customerPhone: form.phone, lineId: form.lineId,
+        notes: form.notes ? form.notes + "（家庭預約）" : "家庭預約",
+        isGroup: true,
+      }));
+      doneList.forEach(b => onBook(b));
+      setDone({ isGroup:true, groupId, members: doneList, customerName: form.name, customerPhone: form.phone, lineId: form.lineId });
+      setStep(4);
+    } else {
+      const booking = {
+        serviceId:  sel.services[0] || "",
+        serviceIds: sel.services,
+        stylistId: sel.stylist,
+        date: formatDate(sel.date), time: sel.time,
+        customerName: form.name, customerPhone: form.phone, lineId: form.lineId, notes: form.notes,
+      };
+      onBook(booking);
+      setDone(booking);
+      setStep(4);
+    }
   };
 
   const STEPS = ["選服務","選設計師","選時間","確認","完成"];
@@ -1248,8 +1304,28 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
         </div>
       )}
 
-      {/* ── STEP 0: Service ── */}
-      {step===0 && (
+      {/* ── 預約模式選擇（step 0 之前） ── */}
+      {step===0 && bookMode === "single" && (
+        <div style={{ marginBottom:"1rem", display:"flex", gap:".6rem", justifyContent:"flex-end", alignItems:"center" }}>
+          <span style={{ fontSize:".76rem", color:"var(--ink3)" }}>預約類型：</span>
+          <button onClick={()=>{ setBookMode("group"); setMemberStep(0); setActiveMember(0); setMembers([newMember()]); }}
+            style={{ display:"flex", alignItems:"center", gap:".35rem", padding:".38rem .85rem", borderRadius:20, border:"1.5px solid var(--copper)", background:"var(--copper-bg)", color:"var(--copper)", fontSize:".76rem", fontWeight:600, cursor:"pointer", letterSpacing:".04em" }}>
+            👨‍👩‍👧 切換為家庭預約
+          </button>
+        </div>
+      )}
+      {step===0 && bookMode === "group" && (
+        <div style={{ marginBottom:"1rem", display:"flex", gap:".6rem", justifyContent:"flex-end", alignItems:"center" }}>
+          <span style={{ fontSize:".76rem", color:"var(--copper)", fontWeight:500 }}>👨‍👩‍👧 家庭團體預約</span>
+          <button onClick={()=>{ setBookMode("single"); setSel({services:[],stylist:null,date:null,time:null}); }}
+            style={{ padding:".3rem .7rem", borderRadius:20, border:"1px solid var(--line)", background:"var(--card)", color:"var(--ink3)", fontSize:".72rem", cursor:"pointer" }}>
+            切回單人
+          </button>
+        </div>
+      )}
+
+      {/* ── STEP 0: Service (single mode) ── */}
+      {step===0 && bookMode === "single" && (
         <div>
           <h2 style={h2Style}>選擇服務項目</h2>
           <p style={{ fontSize:".84rem", color:"var(--ink3)", marginBottom:"1rem", marginTop:"-.5rem" }}>可複選多項加值服務 ✦</p>
@@ -1320,6 +1396,234 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
             </div>
           )}
           <NavBtns onNext={()=>setStep(1)} nextDisabled={sel.services.length===0} isMobile={isMobile}/>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════
+          ── STEP 0 GROUP MODE: 家庭/團體預約主畫面 ──
+      ══════════════════════════════════════════════ */}
+      {step===0 && bookMode==="group" && (
+        <div>
+          <h2 style={h2Style}>家庭 / 團體預約</h2>
+          <p style={{ fontSize:".84rem", color:"var(--ink3)", marginBottom:"1.2rem", marginTop:"-.5rem" }}>
+            為每位成員分別設定服務、設計師與時間 ✦
+          </p>
+
+          {/* Member cards */}
+          <div style={{ display:"flex", flexDirection:"column", gap:".9rem", marginBottom:"1rem" }}>
+            {members.map((m, idx) => {
+              const isOpen = activeMember === idx;
+              const done   = memberComplete(m);
+              const svcs   = memberSvcs(m);
+              const stObj  = memberStylist(m);
+              const slots  = memberSlots(m);
+              const mCalDate = m.calDate || { y:new Date().getFullYear(), m:new Date().getMonth() };
+              const mDaysInMonth = getDaysInMonth(mCalDate.y, mCalDate.m);
+              const mFirstDay    = getFirstDayOfMonth(mCalDate.y, mCalDate.m);
+              const mToday       = new Date(); mToday.setHours(0,0,0,0);
+              return (
+                <div key={m.id} style={{ border:`2px solid ${done?"var(--copper)":isOpen?"var(--copper)":"var(--line)"}`, borderRadius:14, overflow:"hidden", background:"var(--card)", boxShadow: isOpen?"0 4px 20px rgba(196,131,90,.12)":"none", transition:"all .22s" }}>
+                  {/* Card header — click to expand */}
+                  <button onClick={()=>setActiveMember(isOpen?-1:idx)} style={{ width:"100%", display:"flex", alignItems:"center", gap:".75rem", padding:".85rem 1rem", background:"none", border:"none", cursor:"pointer", textAlign:"left", WebkitTapHighlightColor:"transparent" }}>
+                    <div style={{ width:32, height:32, borderRadius:"50%", background: done?"var(--copper)":"var(--copper-bg)", border:`2px solid ${done?"var(--copper)":"var(--copper-bd)"}`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, color: done?"#fff":"var(--copper)", fontWeight:700, fontSize:".88rem" }}>
+                      {done ? "✓" : idx+1}
+                    </div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:".9rem", fontWeight:600, color:"var(--ink)" }}>
+                        {m.name || `成員 ${idx+1}`}
+                      </div>
+                      {done && (
+                        <div style={{ fontSize:".72rem", color:"var(--ink3)", marginTop:".1rem", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                          {svcs.map(s=>s.zh).join("＋")} · {stObj?.name} · {m.date} {m.time}
+                        </div>
+                      )}
+                      {!done && !isOpen && (
+                        <div style={{ fontSize:".72rem", color:"var(--ink4)" }}>點擊展開填寫</div>
+                      )}
+                    </div>
+                    {members.length > 1 && (
+                      <button onClick={e=>{ e.stopPropagation(); setMembers(prev=>prev.filter((_,i)=>i!==idx)); setActiveMember(Math.min(activeMember, members.length-2)); }}
+                        style={{ width:26, height:26, borderRadius:"50%", background:"rgba(200,80,80,.1)", border:"none", color:"#c05050", fontSize:".78rem", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>✕</button>
+                    )}
+                    <div style={{ color:"var(--ink4)", fontSize:".78rem", flexShrink:0, marginLeft:".2rem" }}>{isOpen?"▲":"▼"}</div>
+                  </button>
+
+                  {/* Expanded body */}
+                  {isOpen && (
+                    <div style={{ padding:"0 1rem 1rem", borderTop:"1px solid var(--line)" }}>
+                      {/* 成員姓名 */}
+                      <div style={{ marginTop:".8rem", marginBottom:".9rem" }}>
+                        <label className="field-label">成員姓名 *</label>
+                        <input className="field-input" placeholder={`成員 ${idx+1} 的姓名`} value={m.name}
+                          onChange={e=>updateMember(idx,{name:e.target.value})}/>
+                      </div>
+
+                      {/* Mini step tabs */}
+                      <div style={{ display:"flex", gap:".4rem", marginBottom:".85rem" }}>
+                        {["服務","設計師","時間"].map((label,si)=>{
+                          const stepDone = si===0 ? m.services?.length>0 : si===1 ? !!m.stylist : !!(m.date&&m.time);
+                          const stepActive = memberStep===si;
+                          return (
+                            <button key={si} onClick={()=>setMemberStep(si)}
+                              style={{ flex:1, padding:".35rem .4rem", borderRadius:8, border:`1.5px solid ${stepDone?"var(--copper)":stepActive?"var(--copper)":"var(--line)"}`, background:stepActive?"var(--copper)":stepDone?"var(--copper-bg)":"var(--card)", color:stepActive?"#fff":stepDone?"var(--copper)":"var(--ink4)", fontSize:".7rem", fontWeight:stepActive||stepDone?600:400, cursor:"pointer", transition:"all .18s" }}>
+                              {stepDone && !stepActive ? "✓ " : ""}{label}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Sub-step 0: 服務選擇 */}
+                      {memberStep===0 && (
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:".5rem" }}>
+                          {SERVICES_LOCAL_OUTER.map(svc=>{
+                            const active = m.services?.includes(svc.id);
+                            return (
+                              <button key={svc.id} onClick={()=>updateMember(idx,{ services: active ? m.services.filter(id=>id!==svc.id) : [...(m.services||[]),svc.id], stylist:null, date:null, time:null })}
+                                style={{ display:"flex", alignItems:"center", gap:".5rem", padding:".6rem .75rem", borderRadius:10, border:`1.5px solid ${active?"var(--copper)":"var(--line)"}`, background:active?"var(--copper-bg)":"var(--card)", color:active?"var(--copper)":"var(--ink2)", textAlign:"left", cursor:"pointer", transition:"all .16s", WebkitTapHighlightColor:"transparent" }}>
+                                <span style={{ fontSize:"1.1rem" }}>{svc.icon}</span>
+                                <div>
+                                  <div style={{ fontSize:".74rem", fontWeight:active?600:400 }}>{svc.zh}</div>
+                                  <div style={{ fontSize:".62rem", color:"var(--ink4)" }}>{svc.duration}分 {svc.price}</div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Sub-step 1: 設計師 */}
+                      {memberStep===1 && (
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:".5rem" }}>
+                          {STYLISTS_LOCAL_OUTER.map(st=>{
+                            const photo   = stylistSettings?.[st.id]?.photo;
+                            const active  = m.stylist===st.id;
+                            const canDo   = m.services?.every(id=>{ const s=SERVICES_LOCAL_OUTER.find(x=>x.id===id); return s && st.specialty.includes(s.zh); });
+                            return (
+                              <button key={st.id} onClick={()=>canDo && updateMember(idx,{stylist:st.id,date:null,time:null})}
+                                style={{ position:"relative", borderRadius:10, overflow:"hidden", border:`2px solid ${active?"var(--copper)":"transparent"}`, cursor:canDo?"pointer":"not-allowed", opacity:canDo?1:.35, background:"#1c1816", aspectRatio:"3/2", WebkitTapHighlightColor:"transparent" }}>
+                                {photo
+                                  ? <img src={photo} alt={st.name} style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover", objectPosition:"top center" }}/>
+                                  : <div style={{ position:"absolute", inset:0, background:`linear-gradient(160deg, rgba(${hexToRgb(st.color)},.5) 0%, rgba(28,24,22,.8) 100%)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"2rem", opacity:.5 }}>{st.icon}</div>
+                                }
+                                <div style={{ position:"absolute", inset:0, background:"linear-gradient(to bottom, transparent 35%, rgba(14,10,6,.82) 100%)" }}/>
+                                {active && <div style={{ position:"absolute", top:".4rem", right:".4rem", width:20, height:20, borderRadius:"50%", background:"var(--copper)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:".6rem", color:"#fff", fontWeight:700 }}>✓</div>}
+                                <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:".35rem .5rem" }}>
+                                  <div style={{ fontSize:".74rem", fontWeight:500, color:"#fff" }}>{st.name}</div>
+                                  <div style={{ fontSize:".58rem", color:`rgba(${hexToRgb(st.color)},1)` }}>{st.title}</div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Sub-step 2: 日期 & 時間 */}
+                      {memberStep===2 && (
+                        <div>
+                          {!m.stylist && <div style={{ fontSize:".82rem", color:"var(--ink4)", textAlign:"center", padding:"1rem" }}>請先選擇設計師</div>}
+                          {m.stylist && (
+                            <>
+                              {/* Calendar */}
+                              <div style={{ marginBottom:".75rem" }}>
+                                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:".6rem" }}>
+                                  <button onClick={()=>updateMember(idx,{ calDate: mCalDate.m===0?{y:mCalDate.y-1,m:11}:{y:mCalDate.y,m:mCalDate.m-1} })} style={{ background:"none", border:"none", cursor:"pointer", fontSize:"1.1rem", color:"var(--ink3)", padding:".2rem .5rem" }}>‹</button>
+                                  <span style={{ fontSize:".86rem", fontWeight:600, color:"var(--ink)" }}>{mCalDate.y} 年 {mCalDate.m+1} 月</span>
+                                  <button onClick={()=>updateMember(idx,{ calDate: mCalDate.m===11?{y:mCalDate.y+1,m:0}:{y:mCalDate.y,m:mCalDate.m+1} })} style={{ background:"none", border:"none", cursor:"pointer", fontSize:"1.1rem", color:"var(--ink3)", padding:".2rem .5rem" }}>›</button>
+                                </div>
+                                <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2, textAlign:"center" }}>
+                                  {["日","一","二","三","四","五","六"].map(d=>(
+                                    <div key={d} style={{ fontSize:".62rem", color:"var(--ink4)", padding:".2rem 0" }}>{d}</div>
+                                  ))}
+                                  {Array.from({length:mFirstDay}).map((_,i)=><div key={"e"+i}/>)}
+                                  {Array.from({length:mDaysInMonth}).map((_,i)=>{
+                                    const d   = i+1;
+                                    const dt  = new Date(mCalDate.y, mCalDate.m, d);
+                                    const dow = dt.getDay();
+                                    const stOb = STYLISTS_LOCAL_OUTER.find(s=>s.id===m.stylist);
+                                    const isWork = stOb?.workDays.includes(dow);
+                                    const isPast = dt < mToday;
+                                    const dateStr = formatDate(dt);
+                                    const isSel   = m.date && formatDate(m.date)===dateStr;
+                                    const disabled = isPast || !isWork;
+                                    return (
+                                      <button key={d} disabled={disabled}
+                                        onClick={()=>updateMember(idx,{date:dt,time:null})}
+                                        style={{ padding:".28rem 0", borderRadius:6, border:"none", background:isSel?"var(--copper)":"none", color:isSel?"#fff":disabled?"var(--line)":"var(--ink)", fontWeight:isSel?700:400, fontSize:".76rem", cursor:disabled?"default":"pointer" }}>
+                                        {d}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                              {/* Time slots */}
+                              {m.date && (
+                                <div>
+                                  <div style={{ fontSize:".76rem", color:"var(--ink3)", marginBottom:".4rem" }}>選擇時段</div>
+                                  {slots.length===0
+                                    ? <div style={{ fontSize:".8rem", color:"var(--ink4)", textAlign:"center", padding:".8rem" }}>此日無可用時段</div>
+                                    : <div style={{ display:"flex", flexWrap:"wrap", gap:".35rem" }}>
+                                        {slots.map(slot=>(
+                                          <button key={slot} onClick={()=>updateMember(idx,{time:slot})}
+                                            style={{ padding:".3rem .65rem", borderRadius:8, border:`1.5px solid ${m.time===slot?"var(--copper)":"var(--line)"}`, background:m.time===slot?"var(--copper-bg)":"var(--card)", color:m.time===slot?"var(--copper)":"var(--ink2)", fontSize:".76rem", fontWeight:m.time===slot?600:400, cursor:"pointer" }}>
+                                            {slot}
+                                          </button>
+                                        ))}
+                                      </div>
+                                  }
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 新增成員按鈕 */}
+          <button onClick={()=>{ const nm=newMember(); setMembers(p=>[...p,nm]); setActiveMember(members.length); setMemberStep(0); }}
+            style={{ width:"100%", padding:".7rem", borderRadius:12, border:"2px dashed var(--copper-bd)", background:"var(--copper-bg)", color:"var(--copper)", fontSize:".88rem", fontWeight:600, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:".5rem", marginBottom:".9rem", letterSpacing:".04em" }}>
+            ＋ 新增家庭成員
+          </button>
+
+          {/* 聯絡人 */}
+          <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:12, padding:".85rem 1rem", marginBottom:"1rem" }}>
+            <div style={{ fontSize:".8rem", fontWeight:600, color:"var(--ink)", marginBottom:".65rem", letterSpacing:".04em" }}>聯絡人資料</div>
+            {[["姓名 *","name","text","代表人姓名"],["電話 *","phone","tel","聯絡電話"]].map(([label,key,type,ph])=>(
+              <div key={key} style={{ marginBottom:".6rem" }}>
+                <label className="field-label">{label}</label>
+                <input className="field-input" type={type} placeholder={ph} value={form[key]} onChange={e=>setForm(p=>({...p,[key]:e.target.value}))}/>
+              </div>
+            ))}
+            <div style={{ marginBottom:".6rem" }}>
+              <label className="field-label">備注（可留空）</label>
+              <input className="field-input" placeholder="特殊需求，例如：需相鄰時段" value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))}/>
+            </div>
+          </div>
+
+          {/* Summary chip row */}
+          <div style={{ display:"flex", flexWrap:"wrap", gap:".4rem", marginBottom:"1.2rem" }}>
+            {members.map((m,i)=>{
+              const done = memberComplete(m);
+              return (
+                <div key={m.id} style={{ padding:".25rem .65rem", borderRadius:20, background:done?"var(--copper-bg)":"rgba(0,0,0,.04)", border:`1px solid ${done?"var(--copper-bd)":"var(--line)"}`, fontSize:".7rem", color:done?"var(--copper)":"var(--ink4)" }}>
+                  {done?"✓ ":"○ "}{m.name||`成員${i+1}`}
+                </div>
+              );
+            })}
+          </div>
+
+          <NavBtns
+            onBack={()=>{ setBookMode("single"); setSel({services:[],stylist:null,date:null,time:null}); }}
+            onNext={confirmBook}
+            nextLabel={`確認 ${members.length} 人預約 ✦`}
+            nextDisabled={!allMembersComplete || !form.name || !form.phone}
+            isMobile={isMobile}
+            showInfo={true}
+          />
         </div>
       )}
 
@@ -1572,28 +1876,68 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
         <div style={{ textAlign:"center", padding:"2rem 1rem" }}>
 
           {/* Success icon */}
-          <div style={{ width:72, height:72, borderRadius:"50%", background:"var(--copper-bg)", border:"2px solid var(--copper-bd)", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 1.2rem", fontSize:"1.95rem" }}>🎉</div>
-          <h2 style={{ fontFamily:"'Playfair Display',serif", fontSize:"2rem", fontWeight:500, color:"var(--copper)", marginBottom:".5rem" }}>預約成功</h2>
-          <p style={{ fontSize:"1.1rem", color:"var(--ink2)", lineHeight:1.8, marginBottom:"1.5rem" }}>
-            已收到您的預約申請，{SALON.name}將盡快與您確認
+          <div style={{ width:72, height:72, borderRadius:"50%", background:"var(--copper-bg)", border:"2px solid var(--copper-bd)", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 1.2rem", fontSize:"1.95rem" }}>
+            {done.isGroup ? "👨‍👩‍👧" : "🎉"}
+          </div>
+          <h2 style={{ fontFamily:"'Playfair Display',serif", fontSize:"2rem", fontWeight:500, color:"var(--copper)", marginBottom:".5rem" }}>
+            {done.isGroup ? `${done.members?.length} 人預約成功` : "預約成功"}
+          </h2>
+          <p style={{ fontSize:"1rem", color:"var(--ink2)", lineHeight:1.8, marginBottom:"1.5rem" }}>
+            已收到您的預約申請，{SALON.name} 將盡快與您確認
           </p>
 
-          {/* Summary card — plain div, no card() helper */}
-          <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:"var(--r)", marginBottom:"1.2rem", textAlign:"left", overflow:"hidden" }}>
-            {[
-              ["服務",    (done.serviceIds||[done.serviceId]).map(id=>SERVICES_LOCAL.find(s=>s.id===id)?.zh||id).join("・")],
-              ["設計師",  STYLISTS_LOCAL.find(s=>s.id===done.stylistId)?.name || done.stylistId],
-              ["日期",    `${displayDate(done.date)} (${done.time})`],
-              ["姓名",    done.customerName],
-              ["電話",    done.customerPhone],
-              ...(done.lineId ? [["LINE ID", done.lineId]] : []),
-            ].map(([k,v], i) => (
-              <div key={k} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:".65rem 1rem", borderBottom: i < 4 ? "1px solid var(--line)" : "none", fontSize:"1rem" }}>
-                <span style={{ color:"var(--ink3)", minWidth:70 }}>{k}</span>
-                <span style={{ color:"var(--ink)", fontWeight:500, textAlign:"right" }}>{v}</span>
+          {/* ── 單人摘要 ── */}
+          {!done.isGroup && (
+            <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:"var(--r)", marginBottom:"1.2rem", textAlign:"left", overflow:"hidden" }}>
+              {[
+                ["服務",   (done.serviceIds||[done.serviceId]).map(id=>SERVICES_LOCAL.find(s=>s.id===id)?.zh||id).join("・")],
+                ["設計師", STYLISTS_LOCAL.find(s=>s.id===done.stylistId)?.name || done.stylistId],
+                ["日期",   `${displayDate(done.date)} (${done.time})`],
+                ["姓名",   done.customerName],
+                ["電話",   done.customerPhone],
+                ...(done.lineId ? [["LINE ID", done.lineId]] : []),
+              ].map(([k,v], i, arr) => (
+                <div key={k} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:".65rem 1rem", borderBottom: i<arr.length-1?"1px solid var(--line)":"none" }}>
+                  <span style={{ color:"var(--ink3)", minWidth:70, fontSize:".84rem" }}>{k}</span>
+                  <span style={{ color:"var(--ink)", fontWeight:500, textAlign:"right", fontSize:".88rem" }}>{v}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ── 家庭預約摘要：每人一張卡 ── */}
+          {done.isGroup && (
+            <div style={{ textAlign:"left", marginBottom:"1.2rem" }}>
+              {/* 聯絡人 */}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:".6rem .9rem", background:"var(--copper-bg)", border:"1px solid var(--copper-bd)", borderRadius:10, marginBottom:".75rem" }}>
+                <span style={{ fontSize:".8rem", color:"var(--copper)", fontWeight:600 }}>👤 聯絡人</span>
+                <span style={{ fontSize:".84rem", color:"var(--ink)", fontWeight:500 }}>{done.customerName}・{done.customerPhone}</span>
               </div>
-            ))}
-          </div>
+              {/* Member cards */}
+              <div style={{ display:"flex", flexDirection:"column", gap:".6rem" }}>
+                {(done.members||[]).map((m, idx) => {
+                  const svcs = (m.serviceIds||[m.serviceId]).map(id=>SERVICES_LOCAL.find(s=>s.id===id)?.zh||id).filter(Boolean);
+                  const stName = STYLISTS_LOCAL.find(s=>s.id===m.stylistId)?.name || m.stylistId;
+                  const stColor = STYLISTS_LOCAL.find(s=>s.id===m.stylistId)?.color || "var(--copper)";
+                  return (
+                    <div key={idx} style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:10, overflow:"hidden" }}>
+                      {/* Header */}
+                      <div style={{ display:"flex", alignItems:"center", gap:".6rem", padding:".6rem .85rem", background:"rgba(196,131,90,.05)", borderBottom:"1px solid var(--line)" }}>
+                        <div style={{ width:26, height:26, borderRadius:"50%", background:"var(--copper)", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:".72rem", fontWeight:700, flexShrink:0 }}>{idx+1}</div>
+                        <span style={{ fontSize:".9rem", fontWeight:600, color:"var(--ink)" }}>{m.memberName}</span>
+                        <span style={{ marginLeft:"auto", fontSize:".72rem", padding:".15rem .55rem", borderRadius:20, background:`rgba(${hexToRgb(stColor)},.12)`, color:stColor, border:`1px solid rgba(${hexToRgb(stColor)},.3)`, fontWeight:500 }}>{stName}</span>
+                      </div>
+                      {/* Details */}
+                      <div style={{ padding:".55rem .85rem", display:"flex", flexWrap:"wrap", gap:".3rem .9rem" }}>
+                        <div style={{ fontSize:".78rem", color:"var(--ink2)" }}>✂️ {svcs.join("・")}</div>
+                        <div style={{ fontSize:".78rem", color:"var(--ink2)" }}>📅 {displayDate(m.date)} {m.time}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Action buttons */}
           <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:".7rem", width:"100%", maxWidth:320, margin:"0 auto" }}>
@@ -1618,7 +1962,6 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
             display:"flex", gap:".65rem", alignItems:"flex-start",
             boxShadow:"0 2px 10px rgba(196,131,90,.07)",
           }}>
-            {/* Sparkles icon */}
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--copper)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0, marginTop:".14rem" }}>
               <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z"/><path d="M19 3l.75 2.25L22 6l-2.25.75L19 9l-.75-2.25L16 6l2.25-.75z"/><path d="M5 17l.75 2.25L8 20l-2.25.75L5 23l-.75-2.25L2 20l2.25-.75z"/>
             </svg>
