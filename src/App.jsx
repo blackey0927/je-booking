@@ -307,7 +307,7 @@ function useBookings() {
 
   // ── 新增預約 ──
   const addBooking = useCallback(async (b) => {
-    const booking = { status: "pending", ...b, id: genId(), createdAt: new Date().toISOString() };
+    const booking = { ...b, id: genId(), status: "pending", createdAt: new Date().toISOString() };
     const db = await getFirebaseDB();
     if (db) {
       const { ref, set } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
@@ -992,7 +992,6 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
         stylistId: sel.stylist,
         date: formatDate(sel.date), time: sel.time,
         customerName: form.name, customerPhone: form.phone, lineId: form.lineId, notes: form.notes,
-        source: "online",
       };
       onBook(booking);
       setDone(booking);
@@ -1994,7 +1993,6 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
     serviceIds:["cut_male"], stylistId: STYLISTS[0].id,
     date: today, time:"10:00",
     customerName:"", customerPhone:"", notes:"", lineId:"",
-    source: "phone",
   });
   const [saved, setSaved] = useState(false);
 
@@ -2025,8 +2023,6 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
       date: form.date, time: form.time,
       customerName: form.customerName, customerPhone: form.customerPhone,
       lineId: form.lineId, notes: form.notes,
-      source: form.source,
-      status: "confirmed",
     });
     setSaved(true);
     setTimeout(() => { setSaved(false); onClose(); }, 1200);
@@ -2130,30 +2126,6 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
               ，傳送「<b>查詢我的預約</b>」即可取得。
             </div>
           </div>
-          {/* Source selector */}
-          <div>
-            <label className="field-label">預約來源</label>
-            <div style={{ display:"flex", gap:".4rem", flexWrap:"wrap" }}>
-              {[
-                { id:"phone",    label:"📞 電話" },
-                { id:"line_msg", label:"💬 LINE訊息" },
-                { id:"walkin",   label:"🚶 現場" },
-              ].map(s => (
-                <button key={s.id}
-                  onClick={() => setForm(p => ({ ...p, source: s.id }))}
-                  style={{
-                    padding:".3rem .75rem", borderRadius:20, fontSize:".84rem",
-                    border:`1px solid ${form.source===s.id?"var(--copper)":"var(--line)"}`,
-                    background: form.source===s.id?"var(--copper-bg)":"var(--card)",
-                    color: form.source===s.id?"var(--copper)":"var(--ink2)", cursor:"pointer",
-                    transition:"all .15s",
-                  }}>
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div>
             <label className="field-label">備注</label>
             <input value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} placeholder="特殊需求或備注" className="field-input"/>
@@ -2183,7 +2155,7 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
 function CalendarView({ bookings, onUpdateStatus, onDelete, isMobile, lineSettings, stylistSettings, onAddBooking, stylists=DEFAULT_STYLISTS }) {
   const today = new Date();
   const [calDate, setCalDate] = useState({ y:today.getFullYear(), m:today.getMonth() });
-  const [selectedDay, setSelectedDay] = useState(null);
+  const [selectedDay, setSelectedDay] = useState(today.getDate());
   const [filterStylist, setFilterStylist] = useState("all");
 
   const [showManual, setShowManual] = useState(false);
@@ -2211,14 +2183,17 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, isMobile, lineSettin
       )}
 
       {/* Toolbar */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:".6rem", marginBottom:"1rem" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:".6rem" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:".6rem", marginBottom:".75rem" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:".5rem" }}>
           <button onClick={()=>setCalDate(p=>{const d=new Date(p.y,p.m-1,1);return{y:d.getFullYear(),m:d.getMonth()}})} style={arrowBtn}>‹</button>
           <span style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.38rem", fontWeight:500, color:"var(--ink)", minWidth:110, textAlign:"center" }}>{calDate.y}年 {calDate.m+1}月</span>
           <button onClick={()=>setCalDate(p=>{const d=new Date(p.y,p.m+1,1);return{y:d.getFullYear(),m:d.getMonth()}})} style={arrowBtn}>›</button>
+          <button onClick={()=>{ setCalDate({y:today.getFullYear(),m:today.getMonth()}); setSelectedDay(today.getDate()); }}
+            style={{ padding:".2rem .6rem", borderRadius:20, border:"1px solid var(--copper-bd)", background:"var(--copper-bg)", color:"var(--copper)", fontSize:".74rem", cursor:"pointer", letterSpacing:".04em" }}>
+            今天
+          </button>
         </div>
         <div style={{ display:"flex", gap:".4rem", flexWrap:"wrap", alignItems:"center" }}>
-          
           {onAddBooking && (
             <button onClick={()=>setShowManual(true)} className="btn-copper"
               style={{ padding:".32rem .85rem", fontSize:".84rem", letterSpacing:".08em", flexShrink:0 }}>
@@ -2228,13 +2203,29 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, isMobile, lineSettin
         </div>
       </div>
 
+      {/* Stylist filter */}
+      <div style={{ display:"flex", gap:".35rem", flexWrap:"wrap", marginBottom:".75rem" }}>
+        {[{id:"all",name:"全部",color:"var(--copper)"},...STYLISTS].map(st=>{
+          const on = filterStylist===st.id;
+          return (
+            <button key={st.id} onClick={()=>setFilterStylist(st.id)}
+              style={{ padding:".22rem .65rem", borderRadius:20, fontSize:".74rem",
+                border:`1px solid ${on?(st.color||"var(--copper)"):"var(--line)"}`,
+                background: on?`rgba(${hexToRgb(st.color||"#c4835a")},.1)`:"var(--card)",
+                color: on?(st.color||"var(--copper)"):"var(--ink3)", cursor:"pointer", transition:"all .15s" }}>
+              {st.name}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Calendar grid */}
       <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:"var(--r)", overflow:"hidden", marginBottom:"1rem" }}>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", background:"#f5f3f0" }}>
           {WEEK_DAYS.map(d=><div key={d} style={{ textAlign:"center", padding:".5rem .1rem", fontSize:".84rem", color:"var(--ink3)", borderBottom:"1px solid var(--line)" }}>{d}</div>)}
         </div>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)" }}>
-          {Array(firstDay).fill(null).map((_,i)=><div key={`e${i}`} style={{ borderRight:"1px solid rgba(0,0,0,.03)", borderBottom:"1px solid rgba(0,0,0,.03)", minHeight: isMobile?40:60 }}/>)}
+          {Array(firstDay).fill(null).map((_,i)=><div key={`e${i}`} style={{ borderRight:"1px solid rgba(0,0,0,.03)", borderBottom:"1px solid rgba(0,0,0,.03)", minHeight: isMobile?44:60 }}/>)}
           {Array(daysInMonth).fill(null).map((_,i)=>{
             const day  = i+1;
             const bk   = bookingsOnDay(day);
@@ -2243,22 +2234,31 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, isMobile, lineSettin
             return (
               <div key={day} onClick={()=>setSelectedDay(isSel?null:day)}
                 style={{
-                  minHeight: isMobile?40:60, padding:".3rem", cursor:"pointer",
+                  minHeight: isMobile?44:60, padding: isMobile?".2rem .15rem":".3rem", cursor:"pointer",
                   borderRight:"1px solid rgba(0,0,0,.03)", borderBottom:"1px solid rgba(0,0,0,.03)",
-                  background: isSel?"rgba(200,169,126,.08)":"transparent",
+                  background: isSel?"rgba(196,131,90,.1)":isToday?"rgba(196,131,90,.04)":"transparent",
                   transition:"background .15s",
                 }}>
-                <div style={{ fontSize: isMobile?".65rem":".72rem", color:isToday?"var(--copper)":"#555555", fontWeight:isToday?700:400, marginBottom:".15rem" }}>{day}</div>
-                {bk.slice(0,isMobile?1:3).map((b,bi)=>{
+                <div style={{ display:"flex", justifyContent:"center", marginBottom:".1rem" }}>
+                  <span style={{
+                    width: isMobile?20:24, height: isMobile?20:24,
+                    borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center",
+                    fontSize: isMobile?".62rem":".72rem",
+                    background: isToday?"var(--copper)":isSel?"rgba(196,131,90,.2)":"transparent",
+                    color: isToday?"#fff":isSel?"var(--copper)":"#555555",
+                    fontWeight: isToday||isSel?700:400,
+                  }}>{day}</span>
+                </div>
+                {bk.slice(0,1).map((b,bi)=>{
                   const st  = STYLISTS.find(s=>s.id===b.stylistId);
                   const svc = SERVICES.find(s=>s.id===b.serviceId);
                   return (
-                    <div key={bi} style={{ fontSize:".86rem", padding:".08rem .25rem", borderRadius:3, marginBottom:".1rem", background:`rgba(${hexToRgb(st?.color||"var(--copper)")},.15)`, color:st?.color, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                    <div key={bi} style={{ fontSize: isMobile?".52rem":".64rem", padding:".05rem .2rem", borderRadius:3, marginBottom:".08rem", background:`rgba(${hexToRgb(st?.color||"#c4835a")},.18)`, color:st?.color||"var(--copper)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", lineHeight:1.4 }}>
                       {b.time} {svc?.zh}
                     </div>
                   );
                 })}
-                {bk.length>(isMobile?1:3) && <div style={{ fontSize:".60rem", color:"#999999" }}>+{bk.length-(isMobile?1:3)}</div>}
+                {bk.length>1 && <div style={{ fontSize: isMobile?".48rem":".58rem", color:"#aaaaaa", textAlign:"center" }}>+{bk.length-1}</div>}
               </div>
             );
           })}
@@ -2268,11 +2268,15 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, isMobile, lineSettin
       {/* Selected day detail */}
       {selectedDay && (
         <div>
-          <div style={{ fontSize:"1.32rem", letterSpacing:".18em", color:"#666666", textTransform:"uppercase", marginBottom:".6rem" }}>
-            {calDate.m+1}/{selectedDay} 預約明細
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:".75rem" }}>
+            <div style={{ fontSize:".84rem", letterSpacing:".12em", color:"var(--copper)", textTransform:"uppercase", fontWeight:500 }}>
+              {calDate.m+1} 月 {selectedDay} 日・{selectedBookings.filter(b=>b.status!=="cancelled").length} 筆預約
+            </div>
+            <button onClick={()=>setSelectedDay(null)}
+              style={{ background:"none", border:"none", color:"var(--ink4)", fontSize:"1.1rem", cursor:"pointer", lineHeight:1 }}>✕</button>
           </div>
           {selectedBookings.length===0
-            ? <div style={{ padding:"1.2rem", textAlign:"center", fontSize:"1.32rem", color:"#999999", background:"rgba(0,0,0,.04)", borderRadius:8 }}>當日無預約</div>
+            ? <div style={{ padding:"1.5rem", textAlign:"center", fontSize:".9rem", color:"#999999", background:"rgba(0,0,0,.03)", borderRadius:8, border:"1px dashed var(--line)" }}>當日無預約</div>
             : selectedBookings.map(b=><BookingCard key={b.id} booking={b} onUpdateStatus={onUpdateStatus} onDelete={onDelete} isMobile={isMobile} lineSettings={lineSettings} stylistSettings={stylistSettings} stylists={stylists}/>)
           }
         </div>
@@ -3076,13 +3080,6 @@ function BookingCard({ booking, onUpdateStatus, onDelete, isMobile, lineSettings
         <span style={{ padding:".12rem .5rem", borderRadius:20, fontSize:".70rem", background:`rgba(${hexToRgb(STATUS_COLOR[booking.status])},.12)`, color:STATUS_COLOR[booking.status], border:`1px solid rgba(${hexToRgb(STATUS_COLOR[booking.status])},.25)` }}>
           {STATUS_LABEL[booking.status]}
         </span>
-        {booking.source && booking.source !== "online" && (
-          <span style={{ padding:".12rem .5rem", borderRadius:20, fontSize:".70rem",
-            background:"rgba(99,130,180,.1)", color:"#607090",
-            border:"1px solid rgba(99,130,180,.2)" }}>
-            {{ phone:"📞 電話", line_msg:"💬 LINE", walkin:"🚶 現場" }[booking.source] || booking.source}
-          </span>
-        )}
       </div>
       <div style={{ padding:".65rem .9rem", display:"grid", gridTemplateColumns: isMobile?"1fr":"1fr 1fr", gap:".3rem .8rem" }}>
         {[
