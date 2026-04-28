@@ -3124,21 +3124,21 @@ function ServicesMenu({ isMobile, servicesMgr, svcPhotosMgr, svcPhotos={} }) {
                 <div key={svc.id} style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:"var(--r)", boxShadow:"var(--shadow)", overflow:"hidden" }}>
 
                   {/* ── 封面圖片區（管理頁） ── */}
-                  <div style={{ position:"relative", height:120, overflow:"hidden" }}>
+                  <div style={{ position:"relative", aspectRatio:"16/9", overflow:"hidden" }}>
                     {svcPhotos[svc.id]
                       ? <img src={svcPhotos[svc.id]} alt={svc.zh} style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }}/>
-                      : <div style={{ position:"absolute", inset:0, background:`linear-gradient(135deg,rgba(${hexToRgb(svc.color||"#c4835a")},.18) 0%,rgba(${hexToRgb(svc.color||"#c4835a")},.05) 100%)`, display:"flex", alignItems:"center", justifyContent:"center" }}>
-                          <span style={{ fontSize:"2.8rem", opacity:.4 }}>{svc.icon}</span>
+                      : <div style={{ position:"absolute", inset:0, background:`linear-gradient(135deg,rgba(${hexToRgb(svc.color||"#c4835a")},.22) 0%,rgba(${hexToRgb(svc.color||"#c4835a")},.06) 100%)`, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                          <span style={{ fontSize:"3.8rem", opacity:.35 }}>{svc.icon}</span>
                         </div>
                     }
-                    <div style={{ position:"absolute", inset:0, background:"linear-gradient(to bottom, transparent 35%, rgba(14,10,6,.6) 100%)" }}/>
+                    <div style={{ position:"absolute", inset:0, background:"linear-gradient(to bottom, transparent 30%, rgba(14,10,6,.65) 100%)" }}/>
                     {/* 服務名稱 + 價格 浮層 */}
-                    <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:".55rem .75rem", display:"flex", alignItems:"flex-end", justifyContent:"space-between" }}>
+                    <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:".65rem .85rem", display:"flex", alignItems:"flex-end", justifyContent:"space-between" }}>
                       <div>
-                        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1rem", fontWeight:500, color:"#fff", textShadow:"0 1px 3px rgba(0,0,0,.5)" }}>{svc.zh}</div>
-                        <div style={{ fontSize:".62rem", color:"rgba(255,255,255,.65)", marginTop:".1rem" }}>{svc.category}</div>
+                        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.12rem", fontWeight:500, color:"#fff", textShadow:"0 1px 4px rgba(0,0,0,.5)" }}>{svc.zh}</div>
+                        <div style={{ fontSize:".64rem", color:"rgba(255,255,255,.6)", marginTop:".12rem" }}>{svc.category}</div>
                       </div>
-                      <span style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:"1.05rem", color:"#ffd9a8", fontWeight:600, textShadow:"0 1px 3px rgba(0,0,0,.5)" }}>
+                      <span style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:"1.18rem", color:"#ffd9a8", fontWeight:600, textShadow:"0 1px 3px rgba(0,0,0,.5)" }}>
                         {svc.price}<span style={{ fontSize:".75em" }}>{svc.priceNote}</span>
                       </span>
                     </div>
