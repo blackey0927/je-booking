@@ -902,6 +902,11 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
   const [lineIdInput, setLineIdInput] = useState("");
   const [linePasted, setLinePasted]   = useState(false);
 
+  // ── 每次換步驟自動捲回頂部 ──
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [step]);
+
   // ── 家庭/團體預約 ──
   const [bookMode, setBookMode] = useState("single"); // "single" | "group"
   const newMember = () => ({ id: Date.now(), name:"", services:[], stylist:null, date:null, time:null, calDate:{ y:new Date().getFullYear(), m:new Date().getMonth() } });
