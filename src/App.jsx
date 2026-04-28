@@ -153,11 +153,35 @@ function minsToTime(m) {
 function isStylistAvailable(stylist, date, scheduleOverrides) {
   const dateStr = formatDate(date);
   const override = scheduleOverrides?.[stylist.id];
-  // Check specific holiday dates first
   if (override?.holidays?.includes(dateStr)) return false;
-  // Check work days (use override if available, else default)
   const workDays = override?.workDays ?? stylist.workDays;
   return workDays.includes(date.getDay());
+}
+
+// 不指定設計師時：找當天指定時段最閒（預約最少）且有空的設計師
+// 若全滿回傳 null（進待指派佇列）
+function autoAssignStylist(dateStr, time, serviceIds, bookings, stylists, scheduleOverrides) {
+  const date     = parseDate(dateStr);
+  const duration = serviceIds.reduce((sum, id) => {
+    const s = SERVICES.find(x => x.id === id);
+    return sum + (s?.duration || 60);
+  }, 0);
+  // 篩出當天有上班、且該時段空閒、且能做所有服務的設計師
+  const svcNames = serviceIds.map(id => SERVICES.find(s=>s.id===id)?.zh).filter(Boolean);
+  const candidates = stylists.filter(st => {
+    if (!isStylistAvailable(st, date, scheduleOverrides)) return false;
+    if (svcNames.length > 0 && !svcNames.every(n => st.specialty.includes(n))) return false;
+    return isSlotAvailable(time, st.id, date, bookings, duration);
+  });
+  if (candidates.length === 0) return null;
+  // 選當天預約最少的
+  const dateBookings = bookings.filter(b => b.date === dateStr && b.status !== "cancelled");
+  const sorted = [...candidates].sort((a, b) => {
+    const countA = dateBookings.filter(bk => bk.stylistId === a.id).length;
+    const countB = dateBookings.filter(bk => bk.stylistId === b.id).length;
+    return countA - countB;
+  });
+  return sorted[0];
 }
 
 function getDaysInMonth(year, month) {
@@ -355,7 +379,22 @@ function useBookings() {
     }
   }, []);
 
-  return { bookings, loaded, fbReady, addBooking, updateStatus, deleteBooking };
+  // ── 編輯預約（全欄位更新）──
+  const updateBooking = useCallback(async (id, fields) => {
+    const db = await getFirebaseDB();
+    if (db) {
+      const { ref, update } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
+      await update(ref(db, `je_bookings/${id}`), fields);
+    } else {
+      setBookings(prev => {
+        const next = prev.map(b => b.id === id ? { ...b, ...fields } : b);
+        window.storage?.set("je_bookings", JSON.stringify(next)).catch(() => {});
+        return next;
+      });
+    }
+  }, []);
+
+  return { bookings, loaded, fbReady, addBooking, updateStatus, updateBooking, deleteBooking };
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -418,14 +457,26 @@ function useLINESettings() {
 async function sendLINENotify({ webhookUrl, type, booking, svc, stylist }) {
   if (!webhookUrl) return { ok:false, msg:"未設定 Webhook URL" };
   try {
-    const notifyUrl = webhookUrl.replace(/\/notify\/?$/, '') + '/notify';
+    const baseUrl  = webhookUrl.replace(/\/(notify(-new|-cancel)?|webhook)\/?$/i, "");
+    const notifyUrl = `${baseUrl}/notify`;
     const res = await fetch(notifyUrl, {
       method:"POST",
       headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ type, booking, svcName:svc?.zh, stylistName:stylist?.name,
-        svcDuration:svc?.duration, svcPrice:`${svc?.price}${svc?.priceNote||""}`,
-        salonName: SALON.name }),
+      body: JSON.stringify({
+        type, booking,
+        svcName:     svc?.zh,
+        stylistName: stylist?.name,
+        svcDuration: svc?.duration,
+        svcPrice:    `${svc?.price}${svc?.priceNote||""}`,
+        salonName:   SALON.name,
+      }),
     });
+    if (!res.ok) {
+      const text = await res.text().catch(()=>"");
+      let msg = `HTTP ${res.status}`;
+      try { msg = JSON.parse(text).msg || msg; } catch(_) {}
+      return { ok: false, msg };
+    }
     const data = await res.json();
     return data;
   } catch(e) {
@@ -952,20 +1003,40 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
 
   const availableSlots = useMemo(() => {
     if (!sel.stylist || !sel.date || sel.services.length === 0) return [];
-    const dh       = getDayHours(sel.date);
-    const isToday  = formatDate(sel.date) === formatDate(new Date());
-    const nowMins  = isToday ? new Date().getHours() * 60 + new Date().getMinutes() : 0;
-    // 計算所有選擇服務中最晚的 timeFrom 限制（分鐘）
+    const dh          = getDayHours(sel.date);
+    const isToday     = formatDate(sel.date) === formatDate(new Date());
+    const nowMins     = isToday ? new Date().getHours() * 60 + new Date().getMinutes() : 0;
     const minStartMins = selSvcs.reduce((max, s) => Math.max(max, s.timeFrom || 0), 0);
+
+    if (sel.stylist === "any") {
+      // 顯示至少有一位設計師可接的時段
+      const date      = sel.date;
+      const dateStr   = formatDate(date);
+      const svcNames  = sel.services.map(id => SERVICES.find(s=>s.id===id)?.zh).filter(Boolean);
+      const available = STYLISTS.filter(st => {
+        if (!isStylistAvailable(st, date, stylistSettings)) return false;
+        if (svcNames.length > 0 && !svcNames.every(n => st.specialty.includes(n))) return false;
+        return true;
+      });
+      return ALL_SLOTS.filter(slot => {
+        const slotMins = slotToMinutes(slot);
+        if (slotMins < dh.open) return false;
+        if (slotMins + totalDuration > dh.close) return false;
+        if (minStartMins > 0 && slotMins < minStartMins) return false;
+        if (isToday && slotMins < nowMins + 15) return false;
+        return available.some(st => isSlotAvailable(slot, st.id, date, bookings, totalDuration));
+      });
+    }
+
     return ALL_SLOTS.filter(slot => {
       const slotMins = slotToMinutes(slot);
       if (slotMins < dh.open) return false;
       if (slotMins + totalDuration > dh.close) return false;
-      if (minStartMins > 0 && slotMins < minStartMins) return false; // 時段限制
+      if (minStartMins > 0 && slotMins < minStartMins) return false;
       if (isToday && slotMins < nowMins + 15) return false;
       return isSlotAvailable(slot, sel.stylist, sel.date, bookings, totalDuration);
     });
-  }, [sel.stylist, sel.date, sel.services, bookings, totalDuration, selSvcs]);
+  }, [sel.stylist, sel.date, sel.services, bookings, totalDuration, selSvcs, stylistSettings]);
 
   const reset = () => {
     setStep(-1); setSel({services:[],stylist:null,date:null,time:null});
@@ -997,10 +1068,26 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
     } else {
       const bookingId   = genId();
       const cancelToken = genCancelToken();
+
+      // 不指定設計師：嘗試自動指派
+      let assignedStylistId = sel.stylist;
+      let needsAssignment   = false;
+      if (sel.stylist === "any") {
+        const dateStr  = formatDate(sel.date);
+        const assigned = autoAssignStylist(dateStr, sel.time, sel.services, bookings, STYLISTS, stylistSettings);
+        if (assigned) {
+          assignedStylistId = assigned.id;
+        } else {
+          assignedStylistId = "any"; // 全滿 → 待指派
+          needsAssignment   = true;
+        }
+      }
+
       const booking = {
         serviceId:  sel.services[0] || "",
         serviceIds: sel.services,
-        stylistId: sel.stylist,
+        stylistId:  assignedStylistId,
+        needsAssignment,
         date: formatDate(sel.date), time: sel.time,
         customerName: form.name, customerPhone: form.phone, lineId: form.lineId, notes: form.notes,
         source: "online",
@@ -1648,6 +1735,53 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
           <h2 style={h2Style}>選擇設計師</h2>
           <p style={{ fontSize:".84rem", color:"var(--ink3)", marginBottom:"1.2rem", marginTop:"-.5rem" }}>選擇最適合您的造型師 ✦</p>
           <div style={{ display:"grid", gridTemplateColumns: isMobile?"1fr 1fr":"1fr 1fr", gap:"1rem", marginBottom:".7rem" }}>
+            {/* 不指定設計師卡片 */}
+            {(() => {
+              const active = sel.stylist === "any";
+              // 確認至少有一位設計師近30天可預約
+              const todayDate = new Date(); todayDate.setHours(0,0,0,0);
+              const svcNames  = sel.services.map(id => SERVICES_LOCAL.find(s=>s.id===id)?.zh).filter(Boolean);
+              const anyAvailable = STYLISTS_LOCAL.some(st => {
+                if (svcNames.length > 0 && !svcNames.every(n => st.specialty.includes(n))) return false;
+                return Array.from({length:31}).some((_,i)=>{
+                  const d = new Date(todayDate); d.setDate(d.getDate()+i);
+                  return isStylistAvailable(st, d, stylistSettings);
+                });
+              });
+              return (
+                <button onClick={()=>anyAvailable&&setSel(p=>({...p,stylist:"any",date:null,time:null}))}
+                  style={{
+                    position:"relative", display:"flex", flexDirection:"column",
+                    alignItems:"center", justifyContent:"center",
+                    padding:"1.2rem .8rem", borderRadius:14, textAlign:"center",
+                    cursor: anyAvailable?"pointer":"not-allowed",
+                    opacity: anyAvailable?1:0.4,
+                    border:`2px solid ${active?"var(--copper)":"rgba(196,131,90,.25)"}`,
+                    boxShadow: active?"0 0 0 3px var(--copper-bg), 0 8px 32px rgba(196,131,90,.22)":"0 2px 12px rgba(0,0,0,.07)",
+                    background: active?"var(--copper-bg)":"var(--card)",
+                    transition:"all .22s ease",
+                    WebkitTapHighlightColor:"transparent",
+                    aspectRatio: isMobile?"3/4":"4/5",
+                    gap:".8rem",
+                  }}>
+                  {active && (
+                    <div style={{ position:"absolute", top:".65rem", right:".65rem", width:24, height:24, borderRadius:"50%", background:"var(--copper)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                      <span style={{ color:"#fff", fontSize:".68rem", fontWeight:700 }}>✓</span>
+                    </div>
+                  )}
+                  <div style={{ fontSize:"2.8rem", lineHeight:1 }}>🎲</div>
+                  <div>
+                    <div style={{ fontFamily:"'Playfair Display',serif", fontSize:isMobile?"1rem":"1.12rem", fontWeight:500, color: active?"var(--copper)":"var(--ink)", marginBottom:".3rem" }}>不指定</div>
+                    <div style={{ fontSize:isMobile?".62rem":".68rem", color:"var(--ink3)", letterSpacing:".04em", lineHeight:1.5 }}>
+                      系統自動分配<br/>最適合的設計師
+                    </div>
+                  </div>
+                  <div style={{ fontSize:isMobile?".58rem":".62rem", color:"var(--copper)", background:"rgba(196,131,90,.08)", border:"1px solid rgba(196,131,90,.2)", borderRadius:20, padding:".15rem .5rem" }}>
+                    快速預約
+                  </div>
+                </button>
+              );
+            })()}
             {STYLISTS_LOCAL.map(st => {
               const canDoSvc = sel.services.every(id => {
                 const s = SERVICES_LOCAL.find(x => x.id === id);
@@ -1767,7 +1901,9 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
                   const d   = new Date(calDate.y, calDate.m, day);
                   d.setHours(0,0,0,0);
                   const isPast      = d < today;
-                  const isAvailable = isStylistAvailable(stylistObj, d, stylistSettings);
+                  const isAvailable = sel.stylist === "any"
+                    ? STYLISTS.some(st => isStylistAvailable(st, d, stylistSettings))
+                    : isStylistAvailable(stylistObj, d, stylistSettings);
                   const isSelected  = sel.date && formatDate(d)===formatDate(sel.date);
                   const isToday     = formatDate(d)===formatDate(today);
                   return (
@@ -1925,7 +2061,9 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
             <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:"var(--r)", marginBottom:"1.2rem", textAlign:"left", overflow:"hidden" }}>
               {[
                 ["服務",   (done.serviceIds||[done.serviceId]).map(id=>SERVICES_LOCAL.find(s=>s.id===id)?.zh||id).join("・")],
-                ["設計師", STYLISTS_LOCAL.find(s=>s.id===done.stylistId)?.name || done.stylistId],
+                ["設計師", done.needsAssignment
+                  ? "待店家安排"
+                  : (STYLISTS_LOCAL.find(s=>s.id===done.stylistId)?.name || done.stylistId)],
                 ["日期",   `${displayDate(done.date)} (${done.time})`],
                 ["姓名",   done.customerName],
                 ["電話",   done.customerPhone],
@@ -2213,7 +2351,7 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
 
 
 
-function CalendarView({ bookings, onUpdateStatus, onDelete, isMobile, lineSettings, stylistSettings, onAddBooking, stylists=DEFAULT_STYLISTS }) {
+function CalendarView({ bookings, onUpdateStatus, onDelete, onEditBooking, isMobile, lineSettings, stylistSettings, onAddBooking, stylists=DEFAULT_STYLISTS }) {
   const today = new Date();
   const [calDate, setCalDate] = useState({ y:today.getFullYear(), m:today.getMonth() });
   const [selectedDay, setSelectedDay] = useState(today.getDate());
@@ -2338,7 +2476,7 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, isMobile, lineSettin
           </div>
           {selectedBookings.length===0
             ? <div style={{ padding:"1.5rem", textAlign:"center", fontSize:".9rem", color:"#999999", background:"rgba(0,0,0,.03)", borderRadius:8, border:"1px dashed var(--line)" }}>當日無預約</div>
-            : selectedBookings.map(b=><BookingCard key={b.id} booking={b} onUpdateStatus={onUpdateStatus} onDelete={onDelete} isMobile={isMobile} lineSettings={lineSettings} stylistSettings={stylistSettings} stylists={stylists}/>)
+            : selectedBookings.map(b=><BookingCard key={b.id} booking={b} onUpdateStatus={onUpdateStatus} onDelete={onDelete} onEditBooking={onEditBooking} isMobile={isMobile} lineSettings={lineSettings} stylistSettings={stylistSettings} stylists={stylists}/>)
           }
         </div>
       )}
@@ -3104,14 +3242,50 @@ function ServicesMenu({ isMobile, servicesMgr, svcPhotosMgr, svcPhotos={} }) {
 /* ═══════════════════════════════════════════════════════════
    BOOKING CARD (shared)
 ═══════════════════════════════════════════════════════════ */
-function BookingCard({ booking, onUpdateStatus, onDelete, isMobile, lineSettings, stylistSettings, stylists=DEFAULT_STYLISTS }) {
+function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobile, lineSettings, stylistSettings, stylists=DEFAULT_STYLISTS }) {
   const svcs  = getBookingSvcs(booking, SERVICES);
-  const svc   = svcs[0] || null;  // primary (icon/color)
+  const svc   = svcs[0] || null;
   const st    = stylists.find(s=>s.id===booking.stylistId);
   const photo = stylistSettings?.[st?.id]?.photo;
-  const [confirm, setConfirm]     = useState(false);
-  const [lineStatus, setLineStatus] = useState(null); // null | "sending" | "ok" | "err"
-  const [lineMsg, setLineMsg]     = useState("");
+  const [confirm, setConfirm]       = useState(false);
+  const [editing, setEditing]       = useState(false);
+  const [lineStatus, setLineStatus] = useState(null);
+  const [lineMsg, setLineMsg]       = useState("");
+  const [editForm, setEditForm]     = useState({});
+
+  const startEdit = () => {
+    setEditForm({
+      customerName:  booking.customerName  || "",
+      customerPhone: booking.customerPhone || "",
+      lineId:        booking.lineId        || "",
+      date:          booking.date          || "",
+      time:          booking.time          || "",
+      notes:         booking.notes         || "",
+      stylistId:     booking.stylistId     || "",
+      serviceIds:    booking.serviceIds    || [booking.serviceId].filter(Boolean),
+    });
+    setEditing(true);
+  };
+
+  const saveEdit = async () => {
+    if (!editForm.customerName || !editForm.date || !editForm.time) return;
+    await onEditBooking(booking.id, {
+      customerName:  editForm.customerName,
+      customerPhone: editForm.customerPhone,
+      lineId:        editForm.lineId,
+      date:          editForm.date,
+      time:          editForm.time,
+      notes:         editForm.notes,
+      stylistId:     editForm.stylistId,
+      serviceId:     editForm.serviceIds[0] || "",
+      serviceIds:    editForm.serviceIds,
+      // 若已指派設計師，清除待指派標記
+      needsAssignment: editForm.stylistId === "any" ? true : false,
+    });
+    setEditing(false);
+  };
+
+  const ef = (field) => (e) => setEditForm(p => ({ ...p, [field]: e.target.value }));
 
   const handleLineNotify = async (type) => {
     setLineStatus("sending");
@@ -3123,6 +3297,85 @@ function BookingCard({ booking, onUpdateStatus, onDelete, isMobile, lineSettings
     setLineMsg(res.msg || "");
     setTimeout(() => setLineStatus(null), 3500);
   };
+
+  // ── 編輯模式 ──────────────────────────────────────────
+  if (editing) {
+    const iStyle = { width:"100%", padding:".45rem .6rem", border:"1px solid var(--line)", borderRadius:6, fontSize:".84rem", color:"var(--ink)", background:"var(--card)", outline:"none" };
+    const lStyle = { fontSize:".72rem", color:"var(--ink3)", letterSpacing:".06em", display:"block", marginBottom:".2rem" };
+    return (
+      <div style={{ background:"#ffffff", border:"1px solid rgba(196,131,90,.4)", borderRadius:8, overflow:"hidden", marginBottom:".6rem" }}>
+        <div style={{ padding:".7rem .9rem", background:"rgba(196,131,90,.06)", borderBottom:"1px solid rgba(196,131,90,.15)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <span style={{ fontSize:".88rem", fontWeight:600, color:"var(--copper)" }}>✏️ 編輯預約</span>
+          <button onClick={()=>setEditing(false)} style={{ background:"none", border:"none", color:"var(--ink3)", fontSize:"1.1rem", cursor:"pointer" }}>✕</button>
+        </div>
+        <div style={{ padding:".9rem", display:"grid", gridTemplateColumns: isMobile?"1fr":"1fr 1fr", gap:".7rem" }}>
+          {/* 顧客姓名 */}
+          <div><label style={lStyle}>顧客姓名 *</label>
+            <input value={editForm.customerName} onChange={ef("customerName")} style={iStyle} placeholder="顧客姓名"/>
+          </div>
+          {/* 電話 */}
+          <div><label style={lStyle}>聯絡電話</label>
+            <input value={editForm.customerPhone} onChange={ef("customerPhone")} style={iStyle} placeholder="電話"/>
+          </div>
+          {/* 日期 */}
+          <div><label style={lStyle}>預約日期 *</label>
+            <input type="date" value={editForm.date} onChange={ef("date")} style={iStyle}/>
+          </div>
+          {/* 時間 */}
+          <div><label style={lStyle}>預約時間 *</label>
+            <select value={editForm.time} onChange={ef("time")} style={iStyle}>
+              {ALL_SLOTS.map(t=><option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          {/* 設計師 */}
+          <div><label style={lStyle}>負責設計師</label>
+            <select value={editForm.stylistId} onChange={ef("stylistId")} style={iStyle}>
+              {STYLISTS.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          {/* LINE ID */}
+          <div><label style={lStyle}>LINE ID</label>
+            <input value={editForm.lineId} onChange={ef("lineId")} style={iStyle} placeholder="U 開頭的 userId"/>
+          </div>
+          {/* 服務（多選）*/}
+          <div style={{ gridColumn: isMobile?"1":"1 / -1" }}>
+            <label style={lStyle}>服務項目</label>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:".3rem" }}>
+              {SERVICES.filter(s=>s.id!=="id_photo"||(editForm.stylistId==="ken")).map(s=>{
+                const on = editForm.serviceIds.includes(s.id);
+                return (
+                  <button key={s.id} onClick={()=>setEditForm(p=>({
+                    ...p, serviceIds: on ? p.serviceIds.filter(x=>x!==s.id) : [...p.serviceIds, s.id]
+                  }))} style={{ padding:".22rem .55rem", borderRadius:20, fontSize:".76rem", cursor:"pointer",
+                    border:`1px solid ${on?"var(--copper)":"var(--line)"}`,
+                    background: on?"var(--copper-bg)":"var(--card)",
+                    color: on?"var(--copper)":"var(--ink3)" }}>
+                    {s.zh}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {/* 備注 */}
+          <div style={{ gridColumn: isMobile?"1":"1 / -1" }}>
+            <label style={lStyle}>備注</label>
+            <input value={editForm.notes} onChange={ef("notes")} style={iStyle} placeholder="特殊需求或備注"/>
+          </div>
+        </div>
+        <div style={{ padding:".7rem .9rem", borderTop:"1px solid var(--line)", display:"flex", gap:".5rem", justifyContent:"flex-end" }}>
+          <button onClick={()=>setEditing(false)}
+            style={{ padding:".45rem .9rem", border:"1px solid var(--line)", borderRadius:6, background:"var(--card)", color:"var(--ink3)", fontSize:".84rem", cursor:"pointer" }}>
+            取消
+          </button>
+          <button onClick={saveEdit}
+            disabled={!editForm.customerName||!editForm.date||!editForm.time}
+            style={{ padding:".45rem 1rem", border:"none", borderRadius:6, background:"var(--copper)", color:"#fff", fontSize:".84rem", cursor:"pointer", opacity:(!editForm.customerName||!editForm.date||!editForm.time)?0.5:1 }}>
+            ✓ 儲存變更
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ background:"#ffffff", border:`1px solid rgba(${hexToRgb(st?.color||"var(--copper)")},.35)`, borderRadius:8, overflow:"hidden", marginBottom:".6rem" }}>
@@ -3141,6 +3394,11 @@ function BookingCard({ booking, onUpdateStatus, onDelete, isMobile, lineSettings
         <span style={{ padding:".12rem .5rem", borderRadius:20, fontSize:".70rem", background:`rgba(${hexToRgb(STATUS_COLOR[booking.status])},.12)`, color:STATUS_COLOR[booking.status], border:`1px solid rgba(${hexToRgb(STATUS_COLOR[booking.status])},.25)` }}>
           {STATUS_LABEL[booking.status]}
         </span>
+        {booking.needsAssignment && (
+          <span style={{ padding:".12rem .5rem", borderRadius:20, fontSize:".70rem", background:"rgba(220,160,50,.12)", color:"#c4900a", border:"1px solid rgba(220,160,50,.3)" }}>
+            🎲 待指派設計師
+          </span>
+        )}
         {booking.source && booking.source !== "online" && (
           <span style={{ padding:".12rem .5rem", borderRadius:20, fontSize:".70rem",
             background:"rgba(99,130,180,.1)", color:"#607090",
@@ -3175,6 +3433,9 @@ function BookingCard({ booking, onUpdateStatus, onDelete, isMobile, lineSettings
           )}
           {booking.status!=="cancelled" && (
             <button onClick={()=>onUpdateStatus(booking.id,"cancelled")} style={{ ...actionBtn, borderColor:"rgba(196,160,160,.3)", color:"#c4a0a0" }}>✕ 取消</button>
+          )}
+          {onEditBooking && (
+            <button onClick={startEdit} style={{ ...actionBtn, borderColor:"rgba(196,131,90,.3)", color:"var(--copper)" }}>✏️ 編輯</button>
           )}
           <button onClick={()=>setConfirm(true)} style={{ ...actionBtn, borderColor:"rgba(196,160,160,.2)", color:"#6a4a4a" }}>刪除</button>
         </div>
@@ -3956,7 +4217,7 @@ export default function SalonApp() {
               {ADMIN_TABS.has(tab) && (
                 adminAuth.unlocked
                   ? <>
-                      {tab==="calendar"  && <CalendarView bookings={bookings} onUpdateStatus={updateStatus} onDelete={deleteBooking} isMobile={isMobile} lineSettings={lineSettings} stylistSettings={stylistMgr.settings} onAddBooking={handleBook} stylists={STYLISTS}/>}
+                      {tab==="calendar"  && <CalendarView bookings={bookings} onUpdateStatus={updateStatus} onDelete={deleteBooking} onEditBooking={updateBooking} isMobile={isMobile} lineSettings={lineSettings} stylistSettings={stylistMgr.settings} onAddBooking={handleBook} stylists={STYLISTS}/>}
                       {tab==="schedule"  && <ScheduleView bookings={bookings} isMobile={isMobile} stylistSettings={stylistMgr.settings} onAddBooking={handleBook} stylists={STYLISTS}/>}
                       {tab==="stylists"  && <StylistRoster bookings={bookings} isMobile={isMobile} stylistMgr={stylistMgr} stylistsMgr={stylistsMgr}/>}
                       {tab==="customers" && <CustomersView customers={customerMgr.customers} onDelete={customerMgr.deleteCustomer} bookings={bookings} isMobile={isMobile}/>}
