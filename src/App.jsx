@@ -2821,44 +2821,52 @@ function StylistRoster({ bookings, isMobile, stylistMgr, stylistsMgr }) {
           };
 
           return (
-            <div key={st.id} style={{ background:"var(--card)", border:`1px solid rgba(${hexToRgb(st.color||"#c4835a")},.18)`, borderRadius:"var(--r)", overflow:"hidden", boxShadow:"var(--shadow)" }}>
+            <div key={st.id} style={{ background:"var(--card)", border:`1px solid rgba(${hexToRgb(st.color||"#c4835a")},.18)`, borderRadius:"var(--r)", overflow:"hidden", boxShadow:"var(--shadow)", display:"flex", flexDirection:"row" }}>
 
-              {/* ── 滿版封面照片區 ── */}
-              <div style={{ position:"relative", height: isMobile?160:200, background:`linear-gradient(135deg, rgba(${hexToRgb(st.color||"#c4835a")},.18) 0%, rgba(${hexToRgb(st.color||"#c4835a")},.06) 100%)`, overflow:"hidden" }}>
-                {/* 背景照片 */}
+              {/* ── 左側：滿版照片 ── */}
+              <div style={{ position:"relative", width: isMobile?120:200, flexShrink:0, background:`linear-gradient(160deg, rgba(${hexToRgb(st.color||"#c4835a")},.25) 0%, rgba(28,24,22,.85) 100%)` }}>
                 {eff.photo
                   ? <img src={eff.photo} alt={st.name} style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover", objectPosition:"center top" }}/>
                   : <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
-                      <span style={{ fontSize:isMobile?"4rem":"5rem", opacity:.25 }}>{st.icon||"💇"}</span>
+                      <span style={{ fontSize: isMobile?"3rem":"4.5rem", opacity:.25 }}>{st.icon||"💇"}</span>
                     </div>
                 }
                 {/* 漸層遮罩 */}
-                <div style={{ position:"absolute", inset:0, background:"linear-gradient(to bottom, transparent 40%, rgba(14,10,6,.72) 100%)" }}/>
-
-                {/* 姓名 + 職稱 浮層 */}
-                <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:isMobile?".7rem .85rem":".85rem 1rem" }}>
-                  <div style={{ fontFamily:"'Playfair Display',serif", fontSize:isMobile?"1.25rem":"1.45rem", fontWeight:500, color:"#fff", letterSpacing:".04em", lineHeight:1.15, textShadow:"0 1px 4px rgba(0,0,0,.4)" }}>{st.name}</div>
-                  <div style={{ fontSize:isMobile?".72rem":".78rem", color:`rgba(${hexToRgb(st.color||"#c8a97e")},.9)`, marginTop:".18rem", letterSpacing:".06em" }}>
-                    {st.title}{st.exp ? ` · ${st.exp}經驗` : ""}
-                  </div>
-                </div>
+                <div style={{ position:"absolute", inset:0, background:"linear-gradient(to bottom, rgba(0,0,0,.15) 0%, transparent 40%, rgba(14,10,6,.75) 100%)" }}/>
 
                 {/* 上班狀態 badge */}
-                <div style={{ position:"absolute", top:".7rem", left:".7rem" }}>
-                  <span style={{ padding:".2rem .6rem", borderRadius:20, fontSize:".68rem", fontWeight:500, background:isWorkToday?"rgba(6,199,85,.85)":"rgba(80,60,50,.7)", color:"#fff", backdropFilter:"blur(4px)", letterSpacing:".04em" }}>
+                <div style={{ position:"absolute", top:".6rem", left:".5rem" }}>
+                  <span style={{ padding:".15rem .45rem", borderRadius:20, fontSize:".6rem", fontWeight:500, background:isWorkToday?"rgba(6,199,85,.85)":"rgba(60,50,45,.75)", color:"#fff", backdropFilter:"blur(4px)", letterSpacing:".03em", whiteSpace:"nowrap" }}>
                     {isWorkToday ? "今日上班" : "今日休假"}
                   </span>
                 </div>
 
-                {/* 操作按鈕群組 */}
-                <div style={{ position:"absolute", top:".6rem", right:".6rem", display:"flex", flexDirection:"column", gap:".3rem" }}>
+                {/* 姓名 + 職稱 浮層（底部）*/}
+                <div style={{ position:"absolute", bottom:0, left:0, right:0, padding: isMobile?".55rem .6rem .6rem":".7rem .75rem .75rem" }}>
+                  <div style={{ fontFamily:"'Playfair Display',serif", fontSize: isMobile?".92rem":"1.15rem", fontWeight:500, color:"#fff", letterSpacing:".03em", lineHeight:1.2, textShadow:"0 1px 4px rgba(0,0,0,.5)" }}>{st.name}</div>
+                  <div style={{ fontSize: isMobile?".58rem":".65rem", color:`rgba(${hexToRgb(st.color||"#c8a97e")},1)`, marginTop:".12rem", letterSpacing:".04em", lineHeight:1.3 }}>
+                    {st.title}{st.exp ? ` · ${st.exp}` : ""}
+                  </div>
+                </div>
+
+                {/* 上傳照片按鈕 */}
+                <label style={{ position:"absolute", bottom:".55rem", right:".45rem", width:22, height:22, borderRadius:"50%", background:st.color||"var(--copper)", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#fff", fontSize:".72rem", border:"2px solid rgba(255,255,255,.6)", boxShadow:"0 2px 8px rgba(0,0,0,.3)" }} title="更換照片">
+                  ＋<input type="file" accept="image/*" style={{ display:"none" }} onChange={handlePhotoUpload}/>
+                </label>
+              </div>
+
+              {/* ── 右側：所有資訊 ── */}
+              <div style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column" }}>
+
+                {/* 操作按鈕列 */}
+                <div style={{ display:"flex", gap:".3rem", justifyContent:"flex-end", padding:".55rem .65rem .35rem", flexWrap:"wrap" }}>
                   <button onClick={()=>setEditId(isEditing?null:st.id)}
-                    style={{ padding:".22rem .55rem", borderRadius:20, fontSize:".7rem", background:isEditing?"rgba(196,131,90,.9)":"rgba(14,10,6,.55)", color:isEditing?"#fff":"rgba(255,255,255,.85)", border:`1px solid ${isEditing?"rgba(196,131,90,.6)":"rgba(255,255,255,.2)"}`, cursor:"pointer", backdropFilter:"blur(4px)", whiteSpace:"nowrap" }}>
-                    {isEditing ? "完成" : "✏ 排班"}
+                    style={{ padding:".2rem .55rem", borderRadius:20, fontSize:".68rem", background:isEditing?"var(--copper-bg)":"rgba(0,0,0,.04)", color:isEditing?"var(--copper)":"var(--ink3)", border:`1px solid ${isEditing?"var(--copper-bd)":"var(--line)"}`, cursor:"pointer", whiteSpace:"nowrap" }}>
+                    {isEditing ? "完成" : "— 排班"}
                   </button>
                   {stylistsMgr && (
                     <button onClick={()=>openEditStylist(st)}
-                      style={{ padding:".22rem .55rem", borderRadius:20, fontSize:".7rem", background:"rgba(14,10,6,.55)", color:"rgba(255,255,255,.85)", border:"1px solid rgba(255,255,255,.2)", cursor:"pointer", backdropFilter:"blur(4px)" }}>
+                      style={{ padding:".2rem .55rem", borderRadius:20, fontSize:".68rem", background:"rgba(0,0,0,.04)", color:"var(--ink3)", border:"1px solid var(--line)", cursor:"pointer" }}>
                       ✎ 編輯
                     </button>
                   )}
@@ -2868,106 +2876,109 @@ function StylistRoster({ bookings, isMobile, stylistMgr, stylistsMgr }) {
                       const msg = isOriginal ? `確定刪除預設設計師 ${st.name}？` : `確定刪除 ${st.name}？`;
                       if(confirm(msg)) stylistsMgr.deleteStylist(st.id);
                     }}
-                      style={{ padding:".22rem .55rem", borderRadius:20, fontSize:".7rem", background:"rgba(196,60,60,.6)", color:"#fff", border:"1px solid rgba(196,60,60,.4)", cursor:"pointer", backdropFilter:"blur(4px)" }}>
+                      style={{ padding:".2rem .55rem", borderRadius:20, fontSize:".68rem", background:"rgba(196,60,60,.08)", color:"#c44a3a", border:"1px solid rgba(196,60,60,.2)", cursor:"pointer" }}>
                       🗑 刪除
                     </button>
                   )}
                 </div>
 
-                {/* 上傳照片按鈕 */}
-                <label style={{ position:"absolute", bottom:".7rem", right:".7rem", width:28, height:28, borderRadius:"50%", background:st.color||"var(--copper)", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#fff", fontSize:".85rem", border:"2px solid rgba(255,255,255,.6)", boxShadow:"0 2px 8px rgba(0,0,0,.3)" }} title="更換照片">
-                  ＋<input type="file" accept="image/*" style={{ display:"none" }} onChange={handlePhotoUpload}/>
-                </label>
-              </div>
-              {/* Bio */}
-              {st.bio && <div style={{ padding:".75rem 1rem", borderBottom:"1px solid var(--line)", fontSize:".71rem", color:"var(--ink2)", lineHeight:1.75 }}>{st.bio}</div>}
+                {/* Bio */}
+                {st.bio && (
+                  <div style={{ padding:".3rem .75rem .4rem", fontSize:".7rem", color:"var(--ink2)", lineHeight:1.7, borderBottom:"1px solid var(--line)" }}>
+                    {st.bio}
+                  </div>
+                )}
 
-              {/* Specialty — editable */}
-              <div style={{ padding:".65rem 1rem", borderBottom:"1px solid var(--line)" }}>
-                <div style={{ fontSize:".64rem", letterSpacing:".2em", color:"var(--ink3)", textTransform:"uppercase", marginBottom:".42rem" }}>
-                  {isEditing ? "點擊切換專項服務" : "專項服務"}
-                </div>
-                <div style={{ display:"flex", flexWrap:"wrap", gap:".24rem" }}>
-                  {isEditing
-                    ? SERVICES.map(svc=>{
-                        const on = (st.specialty||[]).includes(svc.zh);
-                        return (
-                          <span key={svc.id} onClick={()=>handleEditSpecialty(svc.zh)}
-                            style={{ fontSize:".84rem", padding:".1rem .42rem", borderRadius:20, background:on?`rgba(${hexToRgb(st.color||"#c4835a")},.08)`:"rgba(0,0,0,.04)", color:on?st.color||"var(--copper)":"var(--ink4)", border:`1px solid ${on?`rgba(${hexToRgb(st.color||"#c4835a")},.2)`:"var(--line)"}`, cursor:"pointer", opacity:on?1:.45, transition:"all .15s" }}>
+                {/* Specialty */}
+                <div style={{ padding:".5rem .75rem", borderBottom:"1px solid var(--line)" }}>
+                  <div style={{ fontSize:".6rem", letterSpacing:".16em", color:"var(--ink3)", textTransform:"uppercase", marginBottom:".35rem" }}>
+                    {isEditing ? "點擊切換專項服務" : "專項服務"}
+                  </div>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:".2rem" }}>
+                    {isEditing
+                      ? SERVICES.map(svc=>{
+                          const on = (st.specialty||[]).includes(svc.zh);
+                          return (
+                            <span key={svc.id} onClick={()=>handleEditSpecialty(svc.zh)}
+                              style={{ fontSize:".7rem", padding:".08rem .38rem", borderRadius:20, background:on?`rgba(${hexToRgb(st.color||"#c4835a")},.1)`:"rgba(0,0,0,.04)", color:on?st.color||"var(--copper)":"var(--ink4)", border:`1px solid ${on?`rgba(${hexToRgb(st.color||"#c4835a")},.25)`:"var(--line)"}`, cursor:"pointer", opacity:on?1:.45, transition:"all .15s" }}>
+                              {svc.icon} {svc.zh}
+                            </span>
+                          );
+                        })
+                      : SERVICES.filter(svc=>(st.specialty||[]).includes(svc.zh)).map(svc=>(
+                          <span key={svc.id}
+                            style={{ fontSize:".7rem", padding:".08rem .38rem", borderRadius:20, background:`rgba(${hexToRgb(st.color||"#c4835a")},.08)`, color:st.color||"var(--copper)", border:`1px solid rgba(${hexToRgb(st.color||"#c4835a")},.2)` }}>
                             {svc.icon} {svc.zh}
                           </span>
-                        );
-                      })
-                    : SERVICES.filter(svc=>(st.specialty||[]).includes(svc.zh)).map(svc=>(
-                        <span key={svc.id}
-                          style={{ fontSize:".84rem", padding:".1rem .42rem", borderRadius:20, background:`rgba(${hexToRgb(st.color||"#c4835a")},.08)`, color:st.color||"var(--copper)", border:`1px solid rgba(${hexToRgb(st.color||"#c4835a")},.2)` }}>
-                          {svc.icon} {svc.zh}
-                        </span>
-                      ))
-                  }
-                </div>
-              </div>
-
-              {/* Work days */}
-              <div style={{ padding:".65rem 1rem", borderBottom:"1px solid var(--line)" }}>
-                <div style={{ fontSize:".64rem", letterSpacing:".2em", color:"var(--ink3)", textTransform:"uppercase", marginBottom:".42rem" }}>
-                  {isEditing?"點擊切換上班日":"常規上班日"}
-                </div>
-                <div style={{ display:"flex", gap:".28rem" }}>
-                  {["日","一","二","三","四","五","六"].map((d,i)=>{
-                    const on = eff.workDays.includes(i);
-                    return (
-                      <div key={i} onClick={()=>isEditing&&toggleWorkDay(i)}
-                        style={{ width:28, height:28, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:".86rem", fontWeight:on?600:400, background:on?`rgba(${hexToRgb(st.color||"#c4835a")},.15)`:"rgba(0,0,0,.04)", color:on?st.color||"var(--copper)":"var(--ink4)", border:`1px solid ${on?`rgba(${hexToRgb(st.color||"#c4835a")},.4)`:"var(--line)"}`, cursor:isEditing?"pointer":"default", transition:"all .15s" }}>
-                        {d}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Holiday editor */}
-              {upcomingHols.length > 0 && !isEditing && (
-                <div style={{ padding:".65rem 1rem", borderBottom:"1px solid var(--line)" }}>
-                  <div style={{ fontSize:".64rem", letterSpacing:".2em", color:"var(--ink3)", textTransform:"uppercase", marginBottom:".38rem" }}>特休日期</div>
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:".28rem" }}>
-                    {upcomingHols.map(d=>(
-                      <span key={d} style={{ fontSize:".86rem", padding:".12rem .5rem", borderRadius:20, background:"rgba(196,160,160,.1)", color:"#c46060", border:"1px solid rgba(196,160,160,.25)" }}>{d}</span>
-                    ))}
+                        ))
+                    }
                   </div>
                 </div>
-              )}
-              {isEditing && (
-                <div style={{ padding:".8rem 1rem", borderBottom:"1px solid var(--line)", background:"#faf8f5" }}>
-                  <div style={{ fontSize:".64rem", letterSpacing:".2em", color:"var(--ink3)", textTransform:"uppercase", marginBottom:".5rem" }}>新增特休日期</div>
-                  <div style={{ display:"flex", gap:".5rem", marginBottom:".55rem", flexWrap:"wrap" }}>
-                    <input type="date" value={holidayInput} onChange={e=>setHolidayInput(e.target.value)}
-                      style={{ padding:".38rem .65rem", border:"1px solid var(--line)", borderRadius:6, fontSize:".87rem", color:"var(--ink)", background:"#fff", outline:"none", flex:1, minWidth:130 }}/>
-                    <button onClick={handleAddHoliday} disabled={!holidayInput}
-                      style={{ padding:".38rem .9rem", background:"rgba(196,160,160,.12)", border:"1px solid rgba(196,160,160,.35)", borderRadius:6, color:"#c46060", fontSize:".84rem", cursor:holidayInput?"pointer":"not-allowed" }}>
-                      ＋ 新增
-                    </button>
+
+                {/* Work days */}
+                <div style={{ padding:".5rem .75rem", borderBottom:"1px solid var(--line)" }}>
+                  <div style={{ fontSize:".6rem", letterSpacing:".16em", color:"var(--ink3)", textTransform:"uppercase", marginBottom:".35rem" }}>
+                    {isEditing ? "點擊切換上班日" : "常規上班日"}
                   </div>
-                  {eff.holidays.length > 0 && (
-                    <div style={{ maxHeight:140, overflowY:"auto" }}>
-                      {[...eff.holidays].sort().map(d=>(
-                        <div key={d} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:".28rem .6rem", borderRadius:6, background:"rgba(196,160,160,.08)", border:"1px solid rgba(196,160,160,.18)", marginBottom:".25rem" }}>
-                          <span style={{ fontSize:".94rem", color: d < todayStr ? "var(--ink4)" : "#c46060" }}>
-                            {d} {d >= todayStr && `(${["日","一","二","三","四","五","六"][parseDate(d).getDay()]})`}
-                          </span>
-                          <button onClick={()=>stylistMgr?.removeHoliday(st.id, d)} style={{ background:"none", border:"none", color:"#c46060", cursor:"pointer", fontSize:".87rem", padding:"0 .2rem" }}>✕</button>
+                  <div style={{ display:"flex", gap:".22rem", flexWrap:"wrap" }}>
+                    {["日","一","二","三","四","五","六"].map((d,i)=>{
+                      const on = eff.workDays.includes(i);
+                      return (
+                        <div key={i} onClick={()=>isEditing&&toggleWorkDay(i)}
+                          style={{ width:24, height:24, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:".72rem", fontWeight:on?600:400, background:on?`rgba(${hexToRgb(st.color||"#c4835a")},.15)`:"rgba(0,0,0,.04)", color:on?st.color||"var(--copper)":"var(--ink4)", border:`1px solid ${on?`rgba(${hexToRgb(st.color||"#c4835a")},.4)`:"var(--line)"}`, cursor:isEditing?"pointer":"default", transition:"all .15s" }}>
+                          {d}
                         </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Holiday viewer */}
+                {upcomingHols.length > 0 && !isEditing && (
+                  <div style={{ padding:".5rem .75rem", borderBottom:"1px solid var(--line)" }}>
+                    <div style={{ fontSize:".6rem", letterSpacing:".16em", color:"var(--ink3)", textTransform:"uppercase", marginBottom:".3rem" }}>特休日期</div>
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:".22rem" }}>
+                      {upcomingHols.map(d=>(
+                        <span key={d} style={{ fontSize:".68rem", padding:".1rem .45rem", borderRadius:20, background:"rgba(196,160,160,.1)", color:"#c46060", border:"1px solid rgba(196,160,160,.25)" }}>{d}</span>
                       ))}
                     </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
 
-              {/* Stats */}
-              <div style={{ padding:".65rem 1rem", display:"flex", gap:"1.2rem" }}>
-                <div><div style={{ fontSize:".87rem", color:st.color||"var(--copper)", fontWeight:700 }}>{todayCount}</div><div style={{ fontSize:".64rem", color:"var(--ink3)" }}>今日</div></div>
-                <div><div style={{ fontSize:".87rem", color:st.color||"var(--copper)", fontWeight:700 }}>{totalCount}</div><div style={{ fontSize:".64rem", color:"var(--ink3)" }}>總預約</div></div>
-                <div><div style={{ fontSize:".87rem", color:"#c46060", fontWeight:700 }}>{eff.holidays.filter(d=>d>=todayStr).length}</div><div style={{ fontSize:".64rem", color:"var(--ink3)" }}>特休</div></div>
+                {/* Holiday editor */}
+                {isEditing && (
+                  <div style={{ padding:".65rem .75rem", borderBottom:"1px solid var(--line)", background:"rgba(0,0,0,.02)" }}>
+                    <div style={{ fontSize:".6rem", letterSpacing:".16em", color:"var(--ink3)", textTransform:"uppercase", marginBottom:".45rem" }}>新增特休日期</div>
+                    <div style={{ display:"flex", gap:".4rem", marginBottom:".5rem" }}>
+                      <input type="date" value={holidayInput} onChange={e=>setHolidayInput(e.target.value)}
+                        style={{ padding:".3rem .55rem", border:"1px solid var(--line)", borderRadius:6, fontSize:".8rem", color:"var(--ink)", background:"#fff", outline:"none", flex:1, minWidth:0 }}/>
+                      <button onClick={handleAddHoliday} disabled={!holidayInput}
+                        style={{ padding:".3rem .65rem", background:"rgba(196,160,160,.12)", border:"1px solid rgba(196,160,160,.35)", borderRadius:6, color:"#c46060", fontSize:".78rem", cursor:holidayInput?"pointer":"not-allowed", whiteSpace:"nowrap" }}>
+                        ＋ 新增
+                      </button>
+                    </div>
+                    {eff.holidays.length > 0 && (
+                      <div style={{ maxHeight:110, overflowY:"auto", display:"flex", flexDirection:"column", gap:".22rem" }}>
+                        {[...eff.holidays].sort().map(d=>(
+                          <div key={d} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:".22rem .5rem", borderRadius:6, background:"rgba(196,160,160,.08)", border:"1px solid rgba(196,160,160,.18)" }}>
+                            <span style={{ fontSize:".78rem", color: d < todayStr ? "var(--ink4)" : "#c46060" }}>
+                              {d} {d >= todayStr && `(${["日","一","二","三","四","五","六"][parseDate(d).getDay()]})`}
+                            </span>
+                            <button onClick={()=>stylistMgr?.removeHoliday(st.id, d)} style={{ background:"none", border:"none", color:"#c46060", cursor:"pointer", fontSize:".8rem", padding:"0 .2rem" }}>✕</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Stats */}
+                <div style={{ padding:".5rem .75rem", display:"flex", gap:".9rem", marginTop:"auto" }}>
+                  <div><div style={{ fontSize:".82rem", color:st.color||"var(--copper)", fontWeight:700 }}>{todayCount}</div><div style={{ fontSize:".6rem", color:"var(--ink3)" }}>今日</div></div>
+                  <div><div style={{ fontSize:".82rem", color:st.color||"var(--copper)", fontWeight:700 }}>{totalCount}</div><div style={{ fontSize:".6rem", color:"var(--ink3)" }}>總預約</div></div>
+                  <div><div style={{ fontSize:".82rem", color:"#c46060", fontWeight:700 }}>{eff.holidays.filter(d=>d>=todayStr).length}</div><div style={{ fontSize:".6rem", color:"var(--ink3)" }}>特休</div></div>
+                </div>
+
               </div>
             </div>
           );
