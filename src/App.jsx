@@ -3937,6 +3937,22 @@ const TABS = [
 ];
 
 export default function SalonApp() {
+  // ── 所有 hooks 必須在任何條件式返回之前宣告 ──
+  const [tab, setTab]               = useState("book");
+  const [isMobile, setIsMobile]     = useState(() => window.innerWidth < 640);
+  const { bookings, loaded, fbReady, addBooking, updateStatus, updateBooking, deleteBooking } = useBookings();
+  const { settings: lineSettings, save: saveLineSettings } = useLINESettings();
+  const stylistMgr   = useStylistSettings();
+  const salonConfig  = useSalonSettings();
+  const customerMgr  = useCustomers();
+  const adminAuth    = useAdminAuth();
+  const stylistsMgr  = useStylists();
+  const STYLISTS     = stylistsMgr.stylists;
+  const servicesMgr  = useServices();
+  const svcPhotosMgr = useSvcPhotos();
+  SERVICES = servicesMgr.services;
+
+  // ── 取消頁面偵測（在 hooks 之後做條件判斷）──
   const urlParams   = new URLSearchParams(window.location.search);
   const cancelId    = urlParams.get("cancel");
   const cancelToken = urlParams.get("token");
@@ -3950,20 +3966,6 @@ export default function SalonApp() {
       </ErrorBoundary>
     );
   }
-
-  const [tab, setTab]               = useState("book");
-  const [isMobile, setIsMobile]     = useState(() => window.innerWidth < 640);
-  const { bookings, loaded, fbReady, addBooking, updateStatus, deleteBooking } = useBookings();
-  const { settings: lineSettings, save: saveLineSettings } = useLINESettings();
-  const stylistMgr   = useStylistSettings();
-  const salonConfig  = useSalonSettings();
-  const customerMgr  = useCustomers();
-  const adminAuth    = useAdminAuth();
-  const stylistsMgr  = useStylists();
-  const STYLISTS     = stylistsMgr.stylists;
-  const servicesMgr  = useServices();
-  const svcPhotosMgr = useSvcPhotos();
-  SERVICES = servicesMgr.services;
 
   // Wrap addBooking to also upsert customer
   const handleBook = async (booking) => {
