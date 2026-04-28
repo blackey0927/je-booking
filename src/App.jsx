@@ -171,6 +171,9 @@ function getFirstDayOfMonth(year, month) {
 function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2,6).toUpperCase();
 }
+function genCancelToken() {
+  return Math.random().toString(36).slice(2,10) + Date.now().toString(36);
+}
 
 const ALL_SLOTS = generateSlots(SALON.hours.open, SALON.hours.close, SALON.slotMinutes);
 
@@ -307,7 +310,7 @@ function useBookings() {
 
   // ── 新增預約 ──
   const addBooking = useCallback(async (b) => {
-    const booking = { ...b, id: genId(), status: "pending", createdAt: new Date().toISOString() };
+    const booking = { status: "pending", ...b, id: b.id || genId(), cancelToken: b.cancelToken || genCancelToken(), createdAt: new Date().toISOString() };
     const db = await getFirebaseDB();
     if (db) {
       const { ref, set } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
@@ -981,17 +984,22 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
         customerPhone: form.phone, lineId: form.lineId,
         notes: form.notes ? form.notes + "（家庭預約）" : "家庭預約",
         isGroup: true,
+        id: genId(), cancelToken: genCancelToken(),
       }));
       doneList.forEach(b => onBook(b));
       setDone({ isGroup:true, groupId, members: doneList, customerName: form.name, customerPhone: form.phone, lineId: form.lineId });
       setStep(4);
     } else {
+      const bookingId   = genId();
+      const cancelToken = genCancelToken();
       const booking = {
         serviceId:  sel.services[0] || "",
         serviceIds: sel.services,
         stylistId: sel.stylist,
         date: formatDate(sel.date), time: sel.time,
         customerName: form.name, customerPhone: form.phone, lineId: form.lineId, notes: form.notes,
+        source: "online",
+        id: bookingId, cancelToken,
       };
       onBook(booking);
       setDone(booking);
@@ -1948,6 +1956,13 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
               <span style={{ fontSize:"1.1rem" }}>💬</span>
               加入 LINE 官方帳號，接收預約通知
             </a>
+            {/* 取消連結 */}
+            {!done.isGroup && done.id && done.cancelToken && (
+              <a href={`${window.location.origin}${window.location.pathname}?cancel=${done.id}&token=${done.cancelToken}`}
+                style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:".5rem", width:"100%", padding:".65rem 1rem", background:"rgba(196,131,90,.06)", border:"1px solid rgba(196,131,90,.2)", borderRadius:"var(--r-sm)", color:"var(--copper)", fontSize:".84rem", fontWeight:500, textDecoration:"none" }}>
+                ✕ 如需取消預約，點此連結
+              </a>
+            )}
             <button onClick={reset} className="btn-ghost" style={{ width:"100%", padding:".72rem 1rem" }}>
               再次預約
             </button>
@@ -2155,7 +2170,7 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
 function CalendarView({ bookings, onUpdateStatus, onDelete, isMobile, lineSettings, stylistSettings, onAddBooking, stylists=DEFAULT_STYLISTS }) {
   const today = new Date();
   const [calDate, setCalDate] = useState({ y:today.getFullYear(), m:today.getMonth() });
-  const [selectedDay, setSelectedDay] = useState(today.getDate());
+  const [selectedDay, setSelectedDay] = useState(null);
   const [filterStylist, setFilterStylist] = useState("all");
 
   const [showManual, setShowManual] = useState(false);
@@ -2183,17 +2198,14 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, isMobile, lineSettin
       )}
 
       {/* Toolbar */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:".6rem", marginBottom:".75rem" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:".5rem" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:".6rem", marginBottom:"1rem" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:".6rem" }}>
           <button onClick={()=>setCalDate(p=>{const d=new Date(p.y,p.m-1,1);return{y:d.getFullYear(),m:d.getMonth()}})} style={arrowBtn}>‹</button>
           <span style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.38rem", fontWeight:500, color:"var(--ink)", minWidth:110, textAlign:"center" }}>{calDate.y}年 {calDate.m+1}月</span>
           <button onClick={()=>setCalDate(p=>{const d=new Date(p.y,p.m+1,1);return{y:d.getFullYear(),m:d.getMonth()}})} style={arrowBtn}>›</button>
-          <button onClick={()=>{ setCalDate({y:today.getFullYear(),m:today.getMonth()}); setSelectedDay(today.getDate()); }}
-            style={{ padding:".2rem .6rem", borderRadius:20, border:"1px solid var(--copper-bd)", background:"var(--copper-bg)", color:"var(--copper)", fontSize:".74rem", cursor:"pointer", letterSpacing:".04em" }}>
-            今天
-          </button>
         </div>
         <div style={{ display:"flex", gap:".4rem", flexWrap:"wrap", alignItems:"center" }}>
+          
           {onAddBooking && (
             <button onClick={()=>setShowManual(true)} className="btn-copper"
               style={{ padding:".32rem .85rem", fontSize:".84rem", letterSpacing:".08em", flexShrink:0 }}>
@@ -2203,29 +2215,13 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, isMobile, lineSettin
         </div>
       </div>
 
-      {/* Stylist filter */}
-      <div style={{ display:"flex", gap:".35rem", flexWrap:"wrap", marginBottom:".75rem" }}>
-        {[{id:"all",name:"全部",color:"var(--copper)"},...STYLISTS].map(st=>{
-          const on = filterStylist===st.id;
-          return (
-            <button key={st.id} onClick={()=>setFilterStylist(st.id)}
-              style={{ padding:".22rem .65rem", borderRadius:20, fontSize:".74rem",
-                border:`1px solid ${on?(st.color||"var(--copper)"):"var(--line)"}`,
-                background: on?`rgba(${hexToRgb(st.color||"#c4835a")},.1)`:"var(--card)",
-                color: on?(st.color||"var(--copper)"):"var(--ink3)", cursor:"pointer", transition:"all .15s" }}>
-              {st.name}
-            </button>
-          );
-        })}
-      </div>
-
       {/* Calendar grid */}
       <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:"var(--r)", overflow:"hidden", marginBottom:"1rem" }}>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", background:"#f5f3f0" }}>
           {WEEK_DAYS.map(d=><div key={d} style={{ textAlign:"center", padding:".5rem .1rem", fontSize:".84rem", color:"var(--ink3)", borderBottom:"1px solid var(--line)" }}>{d}</div>)}
         </div>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)" }}>
-          {Array(firstDay).fill(null).map((_,i)=><div key={`e${i}`} style={{ borderRight:"1px solid rgba(0,0,0,.03)", borderBottom:"1px solid rgba(0,0,0,.03)", minHeight: isMobile?44:60 }}/>)}
+          {Array(firstDay).fill(null).map((_,i)=><div key={`e${i}`} style={{ borderRight:"1px solid rgba(0,0,0,.03)", borderBottom:"1px solid rgba(0,0,0,.03)", minHeight: isMobile?40:60 }}/>)}
           {Array(daysInMonth).fill(null).map((_,i)=>{
             const day  = i+1;
             const bk   = bookingsOnDay(day);
@@ -2234,31 +2230,22 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, isMobile, lineSettin
             return (
               <div key={day} onClick={()=>setSelectedDay(isSel?null:day)}
                 style={{
-                  minHeight: isMobile?44:60, padding: isMobile?".2rem .15rem":".3rem", cursor:"pointer",
+                  minHeight: isMobile?40:60, padding:".3rem", cursor:"pointer",
                   borderRight:"1px solid rgba(0,0,0,.03)", borderBottom:"1px solid rgba(0,0,0,.03)",
-                  background: isSel?"rgba(196,131,90,.1)":isToday?"rgba(196,131,90,.04)":"transparent",
+                  background: isSel?"rgba(200,169,126,.08)":"transparent",
                   transition:"background .15s",
                 }}>
-                <div style={{ display:"flex", justifyContent:"center", marginBottom:".1rem" }}>
-                  <span style={{
-                    width: isMobile?20:24, height: isMobile?20:24,
-                    borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center",
-                    fontSize: isMobile?".62rem":".72rem",
-                    background: isToday?"var(--copper)":isSel?"rgba(196,131,90,.2)":"transparent",
-                    color: isToday?"#fff":isSel?"var(--copper)":"#555555",
-                    fontWeight: isToday||isSel?700:400,
-                  }}>{day}</span>
-                </div>
-                {bk.slice(0,1).map((b,bi)=>{
+                <div style={{ fontSize: isMobile?".65rem":".72rem", color:isToday?"var(--copper)":"#555555", fontWeight:isToday?700:400, marginBottom:".15rem" }}>{day}</div>
+                {bk.slice(0,isMobile?1:3).map((b,bi)=>{
                   const st  = STYLISTS.find(s=>s.id===b.stylistId);
                   const svc = SERVICES.find(s=>s.id===b.serviceId);
                   return (
-                    <div key={bi} style={{ fontSize: isMobile?".52rem":".64rem", padding:".05rem .2rem", borderRadius:3, marginBottom:".08rem", background:`rgba(${hexToRgb(st?.color||"#c4835a")},.18)`, color:st?.color||"var(--copper)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", lineHeight:1.4 }}>
+                    <div key={bi} style={{ fontSize:".86rem", padding:".08rem .25rem", borderRadius:3, marginBottom:".1rem", background:`rgba(${hexToRgb(st?.color||"var(--copper)")},.15)`, color:st?.color, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
                       {b.time} {svc?.zh}
                     </div>
                   );
                 })}
-                {bk.length>1 && <div style={{ fontSize: isMobile?".48rem":".58rem", color:"#aaaaaa", textAlign:"center" }}>+{bk.length-1}</div>}
+                {bk.length>(isMobile?1:3) && <div style={{ fontSize:".60rem", color:"#999999" }}>+{bk.length-(isMobile?1:3)}</div>}
               </div>
             );
           })}
@@ -2268,15 +2255,11 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, isMobile, lineSettin
       {/* Selected day detail */}
       {selectedDay && (
         <div>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:".75rem" }}>
-            <div style={{ fontSize:".84rem", letterSpacing:".12em", color:"var(--copper)", textTransform:"uppercase", fontWeight:500 }}>
-              {calDate.m+1} 月 {selectedDay} 日・{selectedBookings.filter(b=>b.status!=="cancelled").length} 筆預約
-            </div>
-            <button onClick={()=>setSelectedDay(null)}
-              style={{ background:"none", border:"none", color:"var(--ink4)", fontSize:"1.1rem", cursor:"pointer", lineHeight:1 }}>✕</button>
+          <div style={{ fontSize:"1.32rem", letterSpacing:".18em", color:"#666666", textTransform:"uppercase", marginBottom:".6rem" }}>
+            {calDate.m+1}/{selectedDay} 預約明細
           </div>
           {selectedBookings.length===0
-            ? <div style={{ padding:"1.5rem", textAlign:"center", fontSize:".9rem", color:"#999999", background:"rgba(0,0,0,.03)", borderRadius:8, border:"1px dashed var(--line)" }}>當日無預約</div>
+            ? <div style={{ padding:"1.2rem", textAlign:"center", fontSize:"1.32rem", color:"#999999", background:"rgba(0,0,0,.04)", borderRadius:8 }}>當日無預約</div>
             : selectedBookings.map(b=><BookingCard key={b.id} booking={b} onUpdateStatus={onUpdateStatus} onDelete={onDelete} isMobile={isMobile} lineSettings={lineSettings} stylistSettings={stylistSettings} stylists={stylists}/>)
           }
         </div>
@@ -3469,6 +3452,159 @@ function LINESettingsView({ settings, onSave, bookings, isMobile, adminAuth }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   CANCEL PAGE  (顯示於 ?cancel=id&token=xxx 參數)
+═══════════════════════════════════════════════════════════ */
+function CancelPage({ bookingId, cancelToken, onDone }) {
+  const [booking, setBooking]   = useState(null);
+  const [state, setState]       = useState("loading"); // loading | confirm | cancelled | error | notfound
+  const [errMsg, setErrMsg]     = useState("");
+  const isMobile = window.innerWidth < 640;
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const db = await getFirebaseDB();
+        if (!db) { setState("error"); setErrMsg("無法連接資料庫"); return; }
+        const { ref, get } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
+        const snap = await get(ref(db, `je_bookings/${bookingId}`));
+        if (!snap.exists()) { setState("notfound"); return; }
+        const bk = snap.val();
+        if (bk.cancelToken !== cancelToken) { setState("error"); setErrMsg("取消連結無效"); return; }
+        if (bk.status === "cancelled") { setState("cancelled"); setBooking(bk); return; }
+        setBooking(bk);
+        setState("confirm");
+      } catch(e) {
+        setState("error"); setErrMsg(e.message);
+      }
+    })();
+  }, [bookingId, cancelToken]);
+
+  const doCancel = async () => {
+    setState("loading");
+    try {
+      const db = await getFirebaseDB();
+      const { ref, update } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
+      await update(ref(db, `je_bookings/${bookingId}`), { status: "cancelled" });
+      setState("cancelled");
+      // 通知店主
+      try {
+        const settingsSnap = await (async () => {
+          const { ref: r, get: g } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
+          return g(r(db, "je_line_settings"));
+        })();
+        const settings = settingsSnap.val();
+        if (settings?.webhookUrl) {
+          const baseUrl = settings.webhookUrl.replace(/\/notify\/?$/, "");
+          fetch(`${baseUrl}/notify-cancel`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ booking }),
+          }).catch(() => {});
+        }
+      } catch(_) {}
+    } catch(e) {
+      setState("error"); setErrMsg(e.message);
+    }
+  };
+
+  const svcNames  = booking ? (booking.serviceIds||[booking.serviceId]).map(id=>SERVICES.find(s=>s.id===id)?.zh||id).filter(Boolean).join("・") : "";
+  const stylist   = booking ? STYLISTS.find(s=>s.id===booking.stylistId) : null;
+
+  return (
+    <div style={{ minHeight:"100vh", background:"var(--bg)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"1.5rem", fontFamily:"'DM Sans',sans-serif" }}>
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap"/>
+      <style>{`:root{--bg:#f8f5f1;--card:#ffffff;--ink:#1c1816;--ink2:#5a4e47;--ink3:#a0948d;--copper:#c4835a;--copper-bg:rgba(196,131,90,.1);--copper-bd:rgba(196,131,90,.3);--line:rgba(28,24,22,.09);--r:12px;--r-sm:8px;}`}</style>
+
+      <div style={{ width:"100%", maxWidth:420 }}>
+        {/* Logo */}
+        <div style={{ textAlign:"center", marginBottom:"2rem" }}>
+          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.4rem", fontWeight:500, color:"var(--copper)", letterSpacing:".08em" }}>{SALON.name}</div>
+          <div style={{ fontSize:".72rem", color:"var(--ink3)", letterSpacing:".15em", marginTop:".2rem" }}>預約取消</div>
+        </div>
+
+        {state === "loading" && (
+          <div style={{ textAlign:"center", padding:"3rem", color:"var(--ink3)", fontSize:".9rem" }}>載入中…</div>
+        )}
+
+        {state === "notfound" && (
+          <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:"var(--r)", padding:"2rem", textAlign:"center" }}>
+            <div style={{ fontSize:"2.5rem", marginBottom:"1rem" }}>🔍</div>
+            <div style={{ fontSize:"1rem", fontWeight:500, color:"var(--ink)", marginBottom:".5rem" }}>找不到此預約</div>
+            <div style={{ fontSize:".84rem", color:"var(--ink3)", marginBottom:"1.5rem" }}>連結可能已失效，或預約已不存在</div>
+            <button onClick={onDone} style={{ padding:".65rem 1.5rem", borderRadius:"var(--r-sm)", border:"1px solid var(--line)", background:"var(--card)", color:"var(--ink2)", fontSize:".9rem", cursor:"pointer" }}>回首頁</button>
+          </div>
+        )}
+
+        {state === "error" && (
+          <div style={{ background:"var(--card)", border:"1px solid rgba(196,131,90,.3)", borderRadius:"var(--r)", padding:"2rem", textAlign:"center" }}>
+            <div style={{ fontSize:"2.5rem", marginBottom:"1rem" }}>⚠️</div>
+            <div style={{ fontSize:"1rem", fontWeight:500, color:"var(--ink)", marginBottom:".5rem" }}>發生錯誤</div>
+            <div style={{ fontSize:".84rem", color:"var(--ink3)", marginBottom:"1.5rem" }}>{errMsg}</div>
+            <button onClick={onDone} style={{ padding:".65rem 1.5rem", borderRadius:"var(--r-sm)", border:"1px solid var(--line)", background:"var(--card)", color:"var(--ink2)", fontSize:".9rem", cursor:"pointer" }}>回首頁</button>
+          </div>
+        )}
+
+        {state === "confirm" && booking && (
+          <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:"var(--r)", overflow:"hidden" }}>
+            {/* Header */}
+            <div style={{ padding:"1.2rem 1.4rem", borderBottom:"1px solid var(--line)", background:"rgba(196,131,90,.04)" }}>
+              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.18rem", fontWeight:500, color:"var(--ink)", marginBottom:".25rem" }}>確認取消預約</div>
+              <div style={{ fontSize:".78rem", color:"var(--ink3)" }}>以下預約將被取消，此動作無法復原</div>
+            </div>
+            {/* Booking info */}
+            <div style={{ padding:"1rem 1.4rem" }}>
+              {[
+                ["服務", svcNames],
+                ["設計師", stylist?.name || booking.stylistId],
+                ["日期時間", `${displayDate(booking.date)} ${booking.time}`],
+                ["姓名", booking.customerName],
+                ["電話", booking.customerPhone],
+              ].map(([k,v])=>(
+                <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:".5rem 0", borderBottom:"1px solid var(--line)", gap:"1rem" }}>
+                  <span style={{ color:"var(--ink3)", fontSize:".84rem", flexShrink:0 }}>{k}</span>
+                  <span style={{ color:"var(--ink)", fontSize:".88rem", fontWeight:500, textAlign:"right" }}>{v}</span>
+                </div>
+              ))}
+            </div>
+            {/* Actions */}
+            <div style={{ padding:"1rem 1.4rem", display:"flex", flexDirection:"column", gap:".6rem" }}>
+              <button onClick={doCancel}
+                style={{ padding:".75rem", borderRadius:"var(--r-sm)", border:"none", background:"#c44a3a", color:"#fff", fontSize:".92rem", fontWeight:600, cursor:"pointer", letterSpacing:".04em" }}>
+                確認取消此預約
+              </button>
+              <button onClick={onDone}
+                style={{ padding:".72rem", borderRadius:"var(--r-sm)", border:"1px solid var(--line)", background:"var(--card)", color:"var(--ink2)", fontSize:".9rem", cursor:"pointer" }}>
+                保留預約，返回首頁
+              </button>
+            </div>
+          </div>
+        )}
+
+        {state === "cancelled" && (
+          <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:"var(--r)", padding:"2.5rem 1.5rem", textAlign:"center" }}>
+            <div style={{ width:64, height:64, borderRadius:"50%", background:"rgba(160,196,184,.15)", border:"2px solid rgba(160,196,184,.4)", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 1.2rem", fontSize:"1.8rem" }}>✓</div>
+            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.4rem", fontWeight:500, color:"var(--ink)", marginBottom:".5rem" }}>預約已取消</div>
+            {booking && (
+              <div style={{ fontSize:".84rem", color:"var(--ink3)", marginBottom:"1.5rem", lineHeight:1.7 }}>
+                {booking.date} {booking.time}・{booking.customerName} 的預約已成功取消
+              </div>
+            )}
+            <a href={`https://line.me/R/ti/p/${SALON.lineOaId}`} target="_blank" rel="noreferrer"
+              style={{ display:"block", padding:".65rem", borderRadius:"var(--r-sm)", background:"rgba(6,199,85,.08)", border:"1px solid rgba(6,199,85,.25)", color:"#06C755", fontSize:".88rem", fontWeight:600, textDecoration:"none", marginBottom:".6rem" }}>
+              💬 如需重新預約，請透過 LINE 聯繫
+            </a>
+            <button onClick={onDone}
+              style={{ padding:".65rem 1.5rem", borderRadius:"var(--r-sm)", border:"1px solid var(--line)", background:"var(--card)", color:"var(--ink2)", fontSize:".9rem", cursor:"pointer" }}>
+              回首頁
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
    MAIN APP
 ═══════════════════════════════════════════════════════════ */
 const TABS = [
@@ -3482,6 +3618,27 @@ const TABS = [
 ];
 
 export default function SalonApp() {
+  // ── 取消頁面偵測 ──
+  const urlParams     = new URLSearchParams(window.location.search);
+  const cancelId      = urlParams.get("cancel");
+  const cancelToken   = urlParams.get("token");
+  const [showCancel, setShowCancel] = useState(!!(cancelId && cancelToken));
+
+  if (showCancel && cancelId && cancelToken) {
+    return (
+      <ErrorBoundary>
+        <CancelPage
+          bookingId={cancelId}
+          cancelToken={cancelToken}
+          onDone={() => {
+            window.history.replaceState({}, "", window.location.pathname);
+            setShowCancel(false);
+          }}
+        />
+      </ErrorBoundary>
+    );
+  }
+
   const [tab, setTab]               = useState("book");
   const [isMobile, setIsMobile]     = useState(() => window.innerWidth < 640);
   const { bookings, loaded, fbReady, addBooking, updateStatus, deleteBooking } = useBookings();
@@ -3510,10 +3667,13 @@ export default function SalonApp() {
       const webhookUrl = lineSettings?.webhookUrl;
       if (webhookUrl) {
         const baseUrl = webhookUrl.replace(/\/notify\/?$/, "");
+        const cancelUrl = booking.id && booking.cancelToken
+          ? `${window.location.origin}${window.location.pathname}?cancel=${booking.id}&token=${booking.cancelToken}`
+          : null;
         fetch(`${baseUrl}/notify-new`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ booking, svcName, stylistName }),
+          body: JSON.stringify({ booking, svcName, stylistName, cancelUrl }),
         }).catch(err => console.warn("[notify-new]", err.message));
       }
     } catch (e) {
