@@ -3412,15 +3412,29 @@ function LINESettingsView({ settings, onSave, bookings, isMobile, adminAuth }) {
 
   const handleTest = async () => {
     setTestStatus("testing");
-    const res = await sendLINENotify({
-      webhookUrl: form.webhookUrl,
-      type: "test",
-      booking: { customerName:"測試顧客", customerPhone:"0900-000-000", lineId:"", date: new Date().toISOString().slice(0,10), time:"10:00", notes:"這是測試通知" },
-      svc: { zh:"剪髮", duration:45, price:"$350", priceNote:"" },
-      stylist: { name:"獻爸" },
-    });
-    setTestStatus(res.ok ? "ok" : "err:" + res.msg);
-    setTimeout(() => setTestStatus(null), 4000);
+    try {
+      // 使用與 handleBook 相同的 URL 解析邏輯
+      const baseUrl = form.webhookUrl.replace(/\/(notify(-new|-cancel)?|webhook)\/?$/i, "");
+      const testBooking = {
+        customerName:"測試顧客", customerPhone:"0900-000-000", lineId:"",
+        date: new Date().toISOString().slice(0,10), time:"10:00", notes:"這是測試通知",
+        serviceId:"cut_male", serviceIds:["cut_male"], stylistId:"ken",
+      };
+      const res = await fetch(`${baseUrl}/notify-new`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ booking: testBooking, svcName:"男子剪髮", stylistName:"獻爸", cancelUrl:null }),
+      });
+      if (res.ok) {
+        setTestStatus("ok");
+      } else {
+        const text = await res.text().catch(()=>"");
+        setTestStatus("err:HTTP " + res.status + (text ? " - " + text.slice(0,80) : ""));
+      }
+    } catch(e) {
+      setTestStatus("err:" + e.message);
+    }
+    setTimeout(() => setTestStatus(null), 6000);
   };
 
   const hasLineCustomers = bookings.filter(b => b.lineId).length;
@@ -3481,10 +3495,18 @@ function LINESettingsView({ settings, onSave, bookings, isMobile, adminAuth }) {
               {saved ? "✓ 已儲存" : "儲存設定"}
             </button>
             <button onClick={handleTest} disabled={!form.webhookUrl}
-              style={{ padding:".65rem 1.1rem", background:"transparent", border:"1px solid rgba(0,0,0,.1)", color:"#888888", borderRadius:6, cursor:form.webhookUrl?"pointer":"not-allowed", fontSize:"1.32rem" }}>
-              {testStatus==="testing" ? "測試中…" : testStatus?.startsWith("err") ? "✕ "+testStatus.slice(4) : testStatus==="ok" ? "✓ 成功" : "測試連線"}
+              style={{ padding:".65rem 1.1rem", background: testStatus==="ok"?"rgba(6,199,85,.1)":testStatus?.startsWith("err")?"rgba(196,74,58,.08)":"transparent", border:`1px solid ${testStatus==="ok"?"rgba(6,199,85,.4)":testStatus?.startsWith("err")?"rgba(196,74,58,.3)":"rgba(0,0,0,.1)"}`, color: testStatus==="ok"?"#06C755":testStatus?.startsWith("err")?"#c44a3a":"#888888", borderRadius:6, cursor:form.webhookUrl?"pointer":"not-allowed", fontSize:".84rem", minWidth:80 }}>
+              {testStatus==="testing" ? "⏳ 測試中…" : testStatus==="ok" ? "✓ 通知成功" : testStatus?.startsWith("err") ? "✕ 失敗" : "測試通知"}
             </button>
           </div>
+          {testStatus?.startsWith("err") && (
+            <div style={{ marginTop:".5rem", padding:".6rem .8rem", background:"rgba(196,74,58,.06)", border:"1px solid rgba(196,74,58,.2)", borderRadius:6, fontSize:".75rem", color:"#c44a3a", wordBreak:"break-all", lineHeight:1.6 }}>
+              <b>錯誤詳情：</b>{testStatus.slice(4)}<br/>
+              <span style={{ color:"#888", marginTop:".3rem", display:"block" }}>
+                實際呼叫：{form.webhookUrl.replace(/\/(notify(-new|-cancel)?|webhook)\/?$/i,"")}/notify-new
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -3683,7 +3705,7 @@ export default function SalonApp() {
   SERVICES = servicesMgr.services;
 
   // Wrap addBooking to also upsert customer
-  const handleBook = (booking) => {
+  const handleBook = async (booking) => {
     try {
       const svcs       = getBookingSvcs(booking, servicesMgr.services || DEFAULT_SERVICES);
       const svcName    = svcs.map(s=>s.zh).join("・") || booking.serviceId || "";
@@ -3695,15 +3717,24 @@ export default function SalonApp() {
       // ── 預約成功立即通知店主 ──
       const webhookUrl = lineSettings?.webhookUrl;
       if (webhookUrl) {
-        const baseUrl = webhookUrl.replace(/\/notify\/?$/, "");
+        // 取得 base URL：移除結尾的 /notify, /notify-new, /webhook 等路徑
+        const baseUrl = webhookUrl.replace(/\/(notify(-new|-cancel)?|webhook)\/?$/i, "");
         const cancelUrl = booking.id && booking.cancelToken
           ? `${window.location.origin}${window.location.pathname}?cancel=${booking.id}&token=${booking.cancelToken}`
           : null;
-        fetch(`${baseUrl}/notify-new`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ booking, svcName, stylistName, cancelUrl }),
-        }).catch(err => console.warn("[notify-new]", err.message));
+        try {
+          const res = await fetch(`${baseUrl}/notify-new`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ booking, svcName, stylistName, cancelUrl }),
+          });
+          if (!res.ok) {
+            const text = await res.text().catch(()=>"");
+            console.warn(`[notify-new] HTTP ${res.status}:`, text);
+          }
+        } catch(fetchErr) {
+          console.warn("[notify-new] fetch 失敗:", fetchErr.message);
+        }
       }
     } catch (e) {
       console.error("handleBook error:", e);
