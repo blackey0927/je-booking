@@ -4034,9 +4034,9 @@ export default function SalonApp() {
       addBooking(booking);
       customerMgr.upsertFromBooking(booking, svcName, stylistName);
 
-      // ── 預約成功立即通知店主 ──
+      // ── 預約成功立即通知店主（僅限線上預約） ──
       const webhookUrl = lineSettings?.webhookUrl;
-      if (webhookUrl) {
+      if (webhookUrl && booking.source === "online") {
         // 取得 base URL：移除結尾的 /notify, /notify-new, /webhook 等路徑
         const baseUrl = webhookUrl.replace(/\/(notify(-new|-cancel)?|webhook)\/?$/i, "");
         const cancelUrl = booking.id && booking.cancelToken
