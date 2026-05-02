@@ -75,7 +75,7 @@ const DEFAULT_STYLISTS = [
     workDays:[1,3,4,5,6,0],
   },
   {
-    id:"yu",     name:"Blackey",  title:"燙髮・護髮師", photo:null,
+    id:"yu",     name:"Yuriliey",  title:"燙髮・護髮師", photo:null,
     icon:"👩‍🦱", exp:"5年",    specialty:["一般沖洗","精緻洗髮","SPA洗","染髮","護髮"],
     color:"#c4a0a0", bio:"燙髮技術扎實，護髮療程細心，讓每位客人的頭髮健康又有光澤。",
     workDays:[1,2,4,5,6,0],
@@ -3947,164 +3947,6 @@ const TABS = [
   { id:"line",      label:"LINE",   icon:"💬" },
 ];
 
-/* ═══════════════════════════════════════════════════════════
-   PWA INSTALL BANNER
-   iOS / Android 雙平台「加入主畫面」引導
-═══════════════════════════════════════════════════════════ */
-function usePWAInstall() {
-  const [show, setShow]             = useState(false);
-  const [platform, setPlatform]     = useState(null);
-  const [deferredPrompt, setDeferred] = useState(null);
-
-  useEffect(() => {
-    const isStandalone =
-      window.matchMedia("(display-mode: standalone)").matches ||
-      window.navigator.standalone === true;
-    if (isStandalone) return;
-
-    const dismissed = localStorage.getItem("pwa-banner-dismissed");
-    if (dismissed && Date.now() - Number(dismissed) < 7 * 24 * 60 * 60 * 1000) return;
-
-    const handleBeforeInstall = (e) => {
-      e.preventDefault();
-      setDeferred(e);
-      setPlatform("android");
-      setShow(true);
-    };
-    window.addEventListener("beforeinstallprompt", handleBeforeInstall);
-
-    const ua = navigator.userAgent;
-    const isIOS    = /iphone|ipad|ipod/i.test(ua);
-    const isSafari = /safari/i.test(ua) && !/chrome|crios|fxios/i.test(ua);
-    if (isIOS && isSafari) { setPlatform("ios"); setShow(true); }
-
-    return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstall);
-  }, []);
-
-  const handleInstall = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === "accepted") setShow(false);
-    setDeferred(null);
-  };
-
-  const handleDismiss = () => {
-    localStorage.setItem("pwa-banner-dismissed", String(Date.now()));
-    setShow(false);
-  };
-
-  return { show, platform, handleInstall, handleDismiss };
-}
-
-function PWAInstallBanner() {
-  const { show, platform, handleInstall, handleDismiss } = usePWAInstall();
-  if (!show) return null;
-
-  return (
-    <>
-      {/* 半透明遮罩 */}
-      <div onClick={handleDismiss} style={{
-        position:"fixed", inset:0,
-        background:"rgba(0,0,0,0.45)", zIndex:9998,
-      }}/>
-
-      {/* Banner 本體 */}
-      <div style={{
-        position:"fixed", bottom:0, left:0, right:0,
-        background:"#fff",
-        borderRadius:"24px 24px 0 0",
-        padding:"24px 20px 44px",
-        zIndex:9999,
-        boxShadow:"0 -8px 40px rgba(74,53,38,0.2)",
-        maxWidth:480, margin:"0 auto",
-        animation:"pwaSlideUp .3s ease-out",
-      }}>
-        <style>{`@keyframes pwaSlideUp{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}`}</style>
-
-        {/* 關閉 */}
-        <button onClick={handleDismiss} style={{
-          position:"absolute", top:14, right:14,
-          width:30, height:30, borderRadius:"50%",
-          background:"#f5ede4", border:"none",
-          cursor:"pointer", fontSize:13, color:"#7a5c3e", fontWeight:700,
-          display:"flex", alignItems:"center", justifyContent:"center",
-        }}>✕</button>
-
-        {/* App 圖示 + 標題 */}
-        <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:16 }}>
-          <div style={{
-            width:56, height:56, borderRadius:14, flexShrink:0,
-            background:"linear-gradient(135deg,#4a3526,#c9975a)",
-            display:"flex", alignItems:"center", justifyContent:"center",
-            fontSize:18, fontWeight:900, color:"#fff",
-            boxShadow:"0 4px 14px rgba(201,151,90,.4)",
-            fontFamily:"'Cormorant Garamond',serif",
-          }}>JE</div>
-          <div>
-            <div style={{ fontSize:16, fontWeight:800, color:"#2c1810", marginBottom:3 }}>JE染燙快剪屋</div>
-            <div style={{ fontSize:12, color:"#9e8270" }}>加入主畫面，預約更方便</div>
-          </div>
-        </div>
-
-        <div style={{ height:1, background:"rgba(201,151,90,.15)", marginBottom:16 }}/>
-
-        {/* iOS 步驟 */}
-        {platform === "ios" && (
-          <div>
-            <div style={{ fontSize:13, fontWeight:800, color:"#4a3526", marginBottom:12, letterSpacing:".04em" }}>
-              安裝步驟（Safari）
-            </div>
-            {[
-              { n:"1", text:"點下方工具列的「分享」按鈕 ⬆️" },
-              { n:"2", text:"向下滑，找到「加入主畫面」➕" },
-              { n:"3", text:"點「新增」，圖示會出現在桌面 ✅" },
-            ].map(({ n, text }) => (
-              <div key={n} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
-                <div style={{
-                  width:24, height:24, borderRadius:"50%", flexShrink:0,
-                  background:"linear-gradient(135deg,#c9975a,#e8c99a)",
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                  fontSize:11, fontWeight:800, color:"#fff",
-                  boxShadow:"0 2px 8px rgba(201,151,90,.35)",
-                }}>{n}</div>
-                <span style={{ fontSize:13, color:"#4a3526", lineHeight:1.5 }}>{text}</span>
-              </div>
-            ))}
-            <div style={{
-              background:"#fef9c3", borderRadius:10, padding:"8px 12px",
-              fontSize:11, color:"#854d0e", fontWeight:600, marginTop:4,
-            }}>⚠️ 請確認使用 Safari 瀏覽器開啟</div>
-          </div>
-        )}
-
-        {/* Android 安裝按鈕 */}
-        {platform === "android" && (
-          <div>
-            <div style={{ fontSize:13, fontWeight:800, color:"#4a3526", marginBottom:8, letterSpacing:".04em" }}>
-              一鍵安裝到手機主畫面
-            </div>
-            <p style={{ fontSize:13, color:"#7a5c3e", lineHeight:1.7, marginBottom:16 }}>
-              安裝後啟動更快，使用體驗與原生 App 完全相同
-            </p>
-            <button onClick={handleInstall} style={{
-              width:"100%",
-              background:"linear-gradient(135deg,#c9975a,#e8c99a)",
-              border:"none", borderRadius:28,
-              padding:"14px 0",
-              fontSize:15, fontWeight:900, color:"#fff",
-              cursor:"pointer",
-              boxShadow:"0 5px 18px rgba(201,151,90,.45)",
-              letterSpacing:".04em",
-              fontFamily:"inherit",
-            }}>安裝 App</button>
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
 export default function SalonApp() {
   // ── 所有 hooks 必須在任何條件式返回之前宣告 ──
   const [tab, setTab]               = useState("book");
@@ -4185,7 +4027,6 @@ export default function SalonApp() {
   return (
     <ErrorBoundary>
     <div style={{ minHeight:"100vh", background:"var(--bg)", color:"var(--ink)", fontFamily:"'DM Sans',sans-serif" }}>
-      <PWAInstallBanner />
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Playfair+Display:wght@400;500;600&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400&display=swap"/>
       <style>{`
         *, *::before, *::after { box-sizing: border-box; }
