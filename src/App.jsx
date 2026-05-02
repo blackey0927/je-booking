@@ -2166,7 +2166,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
 function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobile, stylists=DEFAULT_STYLISTS }) {
   const today = formatDate(new Date());
   const [form, setForm] = useState({
-    serviceIds:["cut_male"], stylistId: STYLISTS[0].id,
+    serviceIds:["cut_male"], stylistId: "",
     date: today, time:"10:00",
     customerName:"", customerPhone:"", notes:"", lineId:"",
     source: "phone",
@@ -2183,20 +2183,47 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
   }, [form.date]);
 
   const slots = useMemo(() => {
-    if (!form.serviceIds.length || !form.stylistId || !form.date) return [];
-    return ALL_SLOTS.filter(slot => {
-      const sm = slotToMinutes(slot);
-      if (sm < dh.open || sm + totalDurM > dh.close) return false;
-      return isSlotAvailable(slot, form.stylistId, parseDate(form.date), bookings, totalDurM);
-    });
-  }, [form.serviceIds, form.stylistId, form.date, bookings, dh, totalDurM]);
+    if (!form.serviceIds.length || !form.date) return [];
+    const dateObj = parseDate(form.date);
+    if (form.stylistId) {
+      // 指定設計師：只看該設計師空檔
+      return ALL_SLOTS.filter(slot => {
+        const sm = slotToMinutes(slot);
+        if (sm < dh.open || sm + totalDurM > dh.close) return false;
+        return isSlotAvailable(slot, form.stylistId, dateObj, bookings, totalDurM);
+      });
+    } else {
+      // 不指定：只要有任一設計師有空即顯示
+      return ALL_SLOTS.filter(slot => {
+        const sm = slotToMinutes(slot);
+        if (sm < dh.open || sm + totalDurM > dh.close) return false;
+        return STYLISTS.some(st => {
+          if (!isStylistAvailable(st, dateObj, stylistSettings)) return false;
+          return isSlotAvailable(slot, st.id, dateObj, bookings, totalDurM);
+        });
+      });
+    }
+  }, [form.serviceIds, form.stylistId, form.date, bookings, dh, totalDurM, stylistSettings]);
 
   const handleSubmit = () => {
     if (!form.customerName || !form.customerPhone || !form.time) return;
+    // 不指定設計師時，自動分配最閒且可接的設計師
+    let assignedStylistId = form.stylistId;
+    let needsAssignment   = false;
+    if (!form.stylistId) {
+      const assigned = autoAssignStylist(form.date, form.time, form.serviceIds, bookings, STYLISTS, stylistSettings);
+      if (assigned) {
+        assignedStylistId = assigned.id;
+      } else {
+        needsAssignment = true;
+        assignedStylistId = "";
+      }
+    }
     onBook({
-      serviceId:  form.serviceIds[0] || "", // primary
+      serviceId:  form.serviceIds[0] || "",
       serviceIds: form.serviceIds,
-      stylistId: form.stylistId,
+      stylistId: assignedStylistId,
+      needsAssignment,
       date: form.date, time: form.time,
       customerName: form.customerName, customerPhone: form.customerPhone,
       lineId: form.lineId, notes: form.notes,
@@ -2247,6 +2274,11 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
           <div>
             <label className="field-label">設計師</label>
             <div style={{ display:"flex", flexWrap:"wrap", gap:".4rem" }}>
+              {/* 不指定按鈕 */}
+              <button onClick={()=>setForm(p=>({...p,stylistId:"",time:""}))}
+                style={{ display:"flex", alignItems:"center", gap:".4rem", padding:".32rem .75rem", borderRadius:"var(--r-sm)", border:`1px solid ${form.stylistId===""?"var(--copper)":"var(--line)"}`, background:form.stylistId===""?"var(--copper-bg)":"var(--card)", color:form.stylistId===""?"var(--copper)":"var(--ink2)", fontSize:".87rem", cursor:"pointer" }}>
+                🎲 不指定
+              </button>
               {STYLISTS.map(st=>{
                 const photo = stylistSettings?.[st.id]?.photo;
                 return (
@@ -2258,6 +2290,11 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
                 );
               })}
             </div>
+            {form.stylistId==="" && (
+              <div style={{ marginTop:".35rem", fontSize:".76rem", color:"var(--ink3)" }}>
+                💡 系統將自動分配當天最空閒的設計師
+              </div>
+            )}
           </div>
 
           {/* Date + Time */}
