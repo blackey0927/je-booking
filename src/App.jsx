@@ -2315,10 +2315,18 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
             </div>
           </div>
 
-          {/* Custom time override */}
+          {/* Custom time override - 整點時段選擇 */}
           <div>
             <label className="field-label">自訂時間（可不選時段直接輸入）</label>
-            <input type="time" value={form.time} onChange={e=>setForm(p=>({...p,time:e.target.value}))} className="field-input" step={SALON.slotMinutes*60}/>
+            <select value={form.time} onChange={e=>setForm(p=>({...p,time:e.target.value}))}
+              className="field-input" style={{ cursor:"pointer" }}>
+              <option value="">-- 選擇整點時段 --</option>
+              {Array.from({ length: SALON.hours.close - SALON.hours.open }, (_, i) => {
+                const h = SALON.hours.open + i;
+                const val = `${String(h).padStart(2,"0")}:00`;
+                return <option key={val} value={val}>{val}</option>;
+              })}
+            </select>
           </div>
 
           {/* Customer info */}
