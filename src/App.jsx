@@ -2467,10 +2467,10 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, onEditBooking, isMob
       {/* Calendar grid */}
       <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:"var(--r)", overflow:"hidden", marginBottom:"1rem" }}>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", background:"#f5f3f0" }}>
-          {WEEK_DAYS.map(d=><div key={d} style={{ textAlign:"center", padding:".5rem .1rem", fontSize:".84rem", color:"var(--ink3)", borderBottom:"1px solid var(--line)" }}>{d}</div>)}
+          {WEEK_DAYS.map(d=><div key={d} style={{ textAlign:"center", padding: isMobile?".3rem .05rem":".5rem .1rem", fontSize: isMobile?".72rem":".84rem", color:"var(--ink3)", borderBottom:"1px solid var(--line)", minWidth:0, overflow:"hidden" }}>{d}</div>)}
         </div>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)" }}>
-          {Array(firstDay).fill(null).map((_,i)=><div key={`e${i}`} style={{ borderRight:"1px solid rgba(0,0,0,.03)", borderBottom:"1px solid rgba(0,0,0,.03)", minHeight: isMobile?44:60 }}/>)}
+          {Array(firstDay).fill(null).map((_,i)=><div key={`e${i}`} style={{ minWidth:0, overflow:"hidden", borderRight:"1px solid rgba(0,0,0,.03)", borderBottom:"1px solid rgba(0,0,0,.03)", minHeight: isMobile?44:60 }}/>)}
           {Array(daysInMonth).fill(null).map((_,i)=>{
             const day  = i+1;
             const bk   = bookingsOnDay(day);
@@ -2479,16 +2479,20 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, onEditBooking, isMob
             return (
               <div key={day} onClick={()=>setSelectedDay(isSel?null:day)}
                 style={{
-                  minHeight: isMobile?44:60, padding: isMobile?".2rem .15rem":".3rem", cursor:"pointer",
+                  minHeight: isMobile?44:60,
+                  padding: isMobile?".15rem .08rem":".3rem",
+                  cursor:"pointer",
+                  minWidth:0, overflow:"hidden",
                   borderRight:"1px solid rgba(0,0,0,.03)", borderBottom:"1px solid rgba(0,0,0,.03)",
                   background: isSel?"rgba(196,131,90,.1)":isToday?"rgba(196,131,90,.04)":"transparent",
                   transition:"background .15s",
                 }}>
                 <div style={{ display:"flex", justifyContent:"center", marginBottom:".1rem" }}>
                   <span style={{
-                    width: isMobile?20:24, height: isMobile?20:24,
+                    width: isMobile?18:24, height: isMobile?18:24,
                     borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center",
-                    fontSize: isMobile?".62rem":".72rem",
+                    fontSize: isMobile?".6rem":".72rem",
+                    flexShrink:0,
                     background: isToday?"var(--copper)":isSel?"rgba(196,131,90,.2)":"transparent",
                     color: isToday?"#fff":isSel?"var(--copper)":"#555555",
                     fontWeight: isToday||isSel?700:400,
@@ -2498,12 +2502,21 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, onEditBooking, isMob
                   const st  = STYLISTS.find(s=>s.id===b.stylistId);
                   const svc = SERVICES.find(s=>s.id===b.serviceId);
                   return (
-                    <div key={bi} style={{ fontSize: isMobile?".52rem":".64rem", padding:".05rem .2rem", borderRadius:3, marginBottom:".08rem", background:`rgba(${hexToRgb(st?.color||"#c4835a")},.18)`, color:st?.color||"var(--copper)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", lineHeight:1.4 }}>
-                      {b.time} {svc?.zh}
+                    <div key={bi} style={{
+                      fontSize: isMobile?".48rem":".64rem",
+                      padding: isMobile?"0 .1rem":".05rem .2rem",
+                      borderRadius:3, marginBottom:".08rem",
+                      background:`rgba(${hexToRgb(st?.color||"#c4835a")},.18)`,
+                      color:st?.color||"var(--copper)",
+                      whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
+                      lineHeight: isMobile?1.5:1.4,
+                      maxWidth:"100%",
+                    }}>
+                      {isMobile ? svc?.zh : `${b.time} ${svc?.zh}`}
                     </div>
                   );
                 })}
-                {bk.length>1 && <div style={{ fontSize: isMobile?".48rem":".58rem", color:"#aaaaaa", textAlign:"center" }}>+{bk.length-1}</div>}
+                {bk.length>1 && <div style={{ fontSize: isMobile?".46rem":".58rem", color:"#aaaaaa", textAlign:"center" }}>+{bk.length-1}</div>}
               </div>
             );
           })}
