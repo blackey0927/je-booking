@@ -858,7 +858,7 @@ function AdminSecretEntry({ onEnter, adminAuth, isMobile, todayCount, pendingCou
         <span style={{ fontSize:isMobile?"1rem":".95rem", fontFamily:"'Cormorant Garamond'", fontWeight:600, color:"var(--copper)", lineHeight:1, position:"relative" }}>{todayCount}</span>
         <span style={{ fontSize:".70rem", color:"var(--copper)", letterSpacing:".06em", position:"relative" }}>今日預約</span>
       </div>
-      {pendingCount>0 && (
+      {adminAuth.unlocked && pendingCount>0 && (
         <div onClick={onPendingClick}
           style={{ padding:".3rem .65rem", borderRadius:20, background:"rgba(196,164,120,.1)", border:"1px solid rgba(196,164,120,.3)", fontSize:".84rem", color:"#a07840", cursor:"pointer", userSelect:"none" }}>
           待確認 {pendingCount}
@@ -2360,7 +2360,6 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, onEditBooking, isMob
 
   const [showManual, setShowManual] = useState(false);
 
-  // 收到 jumpTo（{y,m,d}）時自動跳轉到指定日期
   useEffect(() => {
     if (!jumpTo) return;
     setCalDate({ y: jumpTo.y, m: jumpTo.m });
@@ -3958,8 +3957,8 @@ const TABS = [
 export default function SalonApp() {
   // ── 所有 hooks 必須在任何條件式返回之前宣告 ──
   const [tab, setTab]               = useState("book");
+  const [calendarJump, setCalendarJump] = useState(null);
   const [isMobile, setIsMobile]     = useState(() => window.innerWidth < 640);
-  const [calendarJump, setCalendarJump] = useState(null); // {y,m,d} 跳轉到指定日期
   const { bookings, loaded, fbReady, addBooking, updateStatus, updateBooking, deleteBooking } = useBookings();
   const { settings: lineSettings, save: saveLineSettings } = useLINESettings();
   const stylistMgr   = useStylistSettings();
