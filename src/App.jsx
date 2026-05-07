@@ -199,7 +199,8 @@ function genCancelToken() {
   return Math.random().toString(36).slice(2,10) + Date.now().toString(36);
 }
 
-const ALL_SLOTS = generateSlots(SALON.hours.open, SALON.hours.close, SALON.slotMinutes);
+const ALL_SLOTS  = generateSlots(SALON.hours.open, SALON.hours.close, SALON.slotMinutes);
+const HOUR_SLOTS = generateSlots(SALON.hours.open, SALON.hours.close, 60); // 線上預約整點時段
 
 /* ═══════════════════════════════════════════════════════════
    STORAGE SHIM
@@ -981,7 +982,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
     const todayStr = formatDate(new Date());
     const isToday  = m.date === todayStr;
     const nowMins  = isToday ? new Date().getHours()*60+new Date().getMinutes() : 0;
-    return ALL_SLOTS.filter(slot=>{
+    return HOUR_SLOTS.filter(slot=>{
       const sm = slotToMinutes(slot);
       if (sm < dh.open) return false;
       if (sm + dur > dh.close) return false;
@@ -1019,7 +1020,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
         if (svcNames.length > 0 && !svcNames.every(n => st.specialty.includes(n))) return false;
         return true;
       });
-      return ALL_SLOTS.filter(slot => {
+      return HOUR_SLOTS.filter(slot => {
         const slotMins = slotToMinutes(slot);
         if (slotMins < dh.open) return false;
         if (slotMins + totalDuration > dh.close) return false;
@@ -1029,7 +1030,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
       });
     }
 
-    return ALL_SLOTS.filter(slot => {
+    return HOUR_SLOTS.filter(slot => {
       const slotMins = slotToMinutes(slot);
       if (slotMins < dh.open) return false;
       if (slotMins + totalDuration > dh.close) return false;
@@ -2248,7 +2249,6 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
           <div>
             <label className="field-label">設計師</label>
             <div style={{ display:"flex", flexWrap:"wrap", gap:".4rem" }}>
-              {/* 不指定按鈕 */}
               <button onClick={()=>setForm(p=>({...p,stylistId:"",time:""}))}
                 style={{ display:"flex", alignItems:"center", gap:".4rem", padding:".32rem .75rem", borderRadius:"var(--r-sm)", border:`1px solid ${form.stylistId===""?"var(--copper)":"var(--line)"}`, background:form.stylistId===""?"var(--copper-bg)":"var(--card)", color:form.stylistId===""?"var(--copper)":"var(--ink2)", fontSize:".87rem", cursor:"pointer" }}>
                 🎲 不指定
