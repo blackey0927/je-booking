@@ -2184,34 +2184,20 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
   }, [form.date]);
 
   const slots = useMemo(() => {
-    if (!form.serviceIds.length || !form.date) return [];
-    const dateObj = parseDate(form.date);
-    if (form.stylistId) {
-      return ALL_SLOTS.filter(slot => {
-        const sm = slotToMinutes(slot);
-        if (sm < dh.open || sm + totalDurM > dh.close) return false;
-        return isSlotAvailable(slot, form.stylistId, dateObj, bookings, totalDurM);
-      });
-    } else {
-      return ALL_SLOTS.filter(slot => {
-        const sm = slotToMinutes(slot);
-        if (sm < dh.open || sm + totalDurM > dh.close) return false;
-        return STYLISTS.some(st => isSlotAvailable(slot, st.id, dateObj, bookings, totalDurM));
-      });
-    }
+    if (!form.serviceIds.length || !form.stylistId || !form.date) return [];
+    return ALL_SLOTS.filter(slot => {
+      const sm = slotToMinutes(slot);
+      if (sm < dh.open || sm + totalDurM > dh.close) return false;
+      return isSlotAvailable(slot, form.stylistId, parseDate(form.date), bookings, totalDurM);
+    });
   }, [form.serviceIds, form.stylistId, form.date, bookings, dh, totalDurM]);
 
   const handleSubmit = () => {
     if (!form.customerName || !form.customerPhone || !form.time) return;
-    let assignedStylistId = form.stylistId;
-    if (!form.stylistId) {
-      const assigned = autoAssignStylist(form.date, form.time, form.serviceIds, bookings, STYLISTS, {});
-      assignedStylistId = assigned ? assigned.id : "";
-    }
     onBook({
-      serviceId:  form.serviceIds[0] || "",
+      serviceId:  form.serviceIds[0] || "", // primary
       serviceIds: form.serviceIds,
-      stylistId: assignedStylistId,
+      stylistId: form.stylistId,
       date: form.date, time: form.time,
       customerName: form.customerName, customerPhone: form.customerPhone,
       lineId: form.lineId, notes: form.notes,
@@ -2262,6 +2248,7 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
           <div>
             <label className="field-label">設計師</label>
             <div style={{ display:"flex", flexWrap:"wrap", gap:".4rem" }}>
+              {/* 不指定按鈕 */}
               <button onClick={()=>setForm(p=>({...p,stylistId:"",time:""}))}
                 style={{ display:"flex", alignItems:"center", gap:".4rem", padding:".32rem .75rem", borderRadius:"var(--r-sm)", border:`1px solid ${form.stylistId===""?"var(--copper)":"var(--line)"}`, background:form.stylistId===""?"var(--copper-bg)":"var(--card)", color:form.stylistId===""?"var(--copper)":"var(--ink2)", fontSize:".87rem", cursor:"pointer" }}>
                 🎲 不指定
@@ -2279,7 +2266,7 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
             </div>
             {form.stylistId==="" && (
               <div style={{ marginTop:".35rem", fontSize:".76rem", color:"var(--ink3)" }}>
-                💡 系統將自動分配當天最空閒的設計師
+                💡 預約將以「不指定」儲存，可於預約建立後再指定設計師
               </div>
             )}
           </div>
@@ -2302,7 +2289,7 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
             </div>
           </div>
 
-          {/* Custom time override - 整點時段 */}
+          {/* Custom time override */}
           <div>
             <label className="field-label">自訂時間（可不選時段直接輸入）</label>
             <select value={form.time} onChange={e=>setForm(p=>({...p,time:e.target.value}))}
