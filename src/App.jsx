@@ -75,7 +75,7 @@ const DEFAULT_STYLISTS = [
     workDays:[1,3,4,5,6,0],
   },
   {
-    id:"yu",     name:"Yuriliey",  title:"燙髮・護髮師", photo:null,
+    id:"yu",     name:"Blackey",  title:"燙髮・護髮師", photo:null,
     icon:"👩‍🦱", exp:"5年",    specialty:["一般沖洗","精緻洗髮","SPA洗","染髮","護髮"],
     color:"#c4a0a0", bio:"燙髮技術扎實，護髮療程細心，讓每位客人的頭髮健康又有光澤。",
     workDays:[1,2,4,5,6,0],
@@ -199,8 +199,7 @@ function genCancelToken() {
   return Math.random().toString(36).slice(2,10) + Date.now().toString(36);
 }
 
-const ALL_SLOTS  = generateSlots(SALON.hours.open, SALON.hours.close, SALON.slotMinutes);
-const HOUR_SLOTS = generateSlots(SALON.hours.open, SALON.hours.close, 60); // 線上預約整點時段
+const ALL_SLOTS = generateSlots(SALON.hours.open, SALON.hours.close, SALON.slotMinutes);
 
 /* ═══════════════════════════════════════════════════════════
    STORAGE SHIM
@@ -832,7 +831,7 @@ function useAdminAuth() {
 }
 
 /* Hidden long-press entry to admin — hold 3 seconds */
-function AdminSecretEntry({ onEnter, adminAuth, isMobile, todayCount, pendingCount }) {
+function AdminSecretEntry({ onEnter, adminAuth, isMobile, todayCount, pendingCount, onPendingClick }) {
   const rafRef = React.useRef(null);
   const startRef = React.useRef(null);
   const [pressing, setPressing] = React.useState(false);
@@ -860,7 +859,8 @@ function AdminSecretEntry({ onEnter, adminAuth, isMobile, todayCount, pendingCou
         <span style={{ fontSize:".70rem", color:"var(--copper)", letterSpacing:".06em", position:"relative" }}>今日預約</span>
       </div>
       {pendingCount>0 && (
-        <div style={{ padding:".3rem .65rem", borderRadius:20, background:"rgba(196,164,120,.1)", border:"1px solid rgba(196,164,120,.3)", fontSize:".84rem", color:"#a07840" }}>
+        <div onClick={onPendingClick}
+          style={{ padding:".3rem .65rem", borderRadius:20, background:"rgba(196,164,120,.1)", border:"1px solid rgba(196,164,120,.3)", fontSize:".84rem", color:"#a07840", cursor:"pointer", userSelect:"none" }}>
           待確認 {pendingCount}
         </div>
       )}
@@ -981,7 +981,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
     const todayStr = formatDate(new Date());
     const isToday  = m.date === todayStr;
     const nowMins  = isToday ? new Date().getHours()*60+new Date().getMinutes() : 0;
-    return HOUR_SLOTS.filter(slot=>{
+    return ALL_SLOTS.filter(slot=>{
       const sm = slotToMinutes(slot);
       if (sm < dh.open) return false;
       if (sm + dur > dh.close) return false;
@@ -1019,7 +1019,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
         if (svcNames.length > 0 && !svcNames.every(n => st.specialty.includes(n))) return false;
         return true;
       });
-      return HOUR_SLOTS.filter(slot => {
+      return ALL_SLOTS.filter(slot => {
         const slotMins = slotToMinutes(slot);
         if (slotMins < dh.open) return false;
         if (slotMins + totalDuration > dh.close) return false;
@@ -1029,7 +1029,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
       });
     }
 
-    return HOUR_SLOTS.filter(slot => {
+    return ALL_SLOTS.filter(slot => {
       const slotMins = slotToMinutes(slot);
       if (slotMins < dh.open) return false;
       if (slotMins + totalDuration > dh.close) return false;
@@ -2167,7 +2167,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
 function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobile, stylists=DEFAULT_STYLISTS }) {
   const today = formatDate(new Date());
   const [form, setForm] = useState({
-    serviceIds:["cut_male"], stylistId: "",
+    serviceIds:["cut_male"], stylistId: STYLISTS[0].id,
     date: today, time:"10:00",
     customerName:"", customerPhone:"", notes:"", lineId:"",
     source: "phone",
@@ -2184,47 +2184,20 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
   }, [form.date]);
 
   const slots = useMemo(() => {
-    if (!form.serviceIds.length || !form.date) return [];
-    const dateObj = parseDate(form.date);
-    if (form.stylistId) {
-      // 指定設計師：只看該設計師空檔
-      return ALL_SLOTS.filter(slot => {
-        const sm = slotToMinutes(slot);
-        if (sm < dh.open || sm + totalDurM > dh.close) return false;
-        return isSlotAvailable(slot, form.stylistId, dateObj, bookings, totalDurM);
-      });
-    } else {
-      // 不指定：只要有任一設計師有空即顯示
-      return ALL_SLOTS.filter(slot => {
-        const sm = slotToMinutes(slot);
-        if (sm < dh.open || sm + totalDurM > dh.close) return false;
-        return STYLISTS.some(st => {
-          if (!isStylistAvailable(st, dateObj, stylistSettings)) return false;
-          return isSlotAvailable(slot, st.id, dateObj, bookings, totalDurM);
-        });
-      });
-    }
-  }, [form.serviceIds, form.stylistId, form.date, bookings, dh, totalDurM, stylistSettings]);
+    if (!form.serviceIds.length || !form.stylistId || !form.date) return [];
+    return ALL_SLOTS.filter(slot => {
+      const sm = slotToMinutes(slot);
+      if (sm < dh.open || sm + totalDurM > dh.close) return false;
+      return isSlotAvailable(slot, form.stylistId, parseDate(form.date), bookings, totalDurM);
+    });
+  }, [form.serviceIds, form.stylistId, form.date, bookings, dh, totalDurM]);
 
   const handleSubmit = () => {
     if (!form.customerName || !form.customerPhone || !form.time) return;
-    // 不指定設計師時，自動分配最閒且可接的設計師
-    let assignedStylistId = form.stylistId;
-    let needsAssignment   = false;
-    if (!form.stylistId) {
-      const assigned = autoAssignStylist(form.date, form.time, form.serviceIds, bookings, STYLISTS, stylistSettings);
-      if (assigned) {
-        assignedStylistId = assigned.id;
-      } else {
-        needsAssignment = true;
-        assignedStylistId = "";
-      }
-    }
     onBook({
-      serviceId:  form.serviceIds[0] || "",
+      serviceId:  form.serviceIds[0] || "", // primary
       serviceIds: form.serviceIds,
-      stylistId: assignedStylistId,
-      needsAssignment,
+      stylistId: form.stylistId,
       date: form.date, time: form.time,
       customerName: form.customerName, customerPhone: form.customerPhone,
       lineId: form.lineId, notes: form.notes,
@@ -2275,11 +2248,6 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
           <div>
             <label className="field-label">設計師</label>
             <div style={{ display:"flex", flexWrap:"wrap", gap:".4rem" }}>
-              {/* 不指定按鈕 */}
-              <button onClick={()=>setForm(p=>({...p,stylistId:"",time:""}))}
-                style={{ display:"flex", alignItems:"center", gap:".4rem", padding:".32rem .75rem", borderRadius:"var(--r-sm)", border:`1px solid ${form.stylistId===""?"var(--copper)":"var(--line)"}`, background:form.stylistId===""?"var(--copper-bg)":"var(--card)", color:form.stylistId===""?"var(--copper)":"var(--ink2)", fontSize:".87rem", cursor:"pointer" }}>
-                🎲 不指定
-              </button>
               {STYLISTS.map(st=>{
                 const photo = stylistSettings?.[st.id]?.photo;
                 return (
@@ -2291,11 +2259,6 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
                 );
               })}
             </div>
-            {form.stylistId==="" && (
-              <div style={{ marginTop:".35rem", fontSize:".76rem", color:"var(--ink3)" }}>
-                💡 系統將自動分配當天最空閒的設計師
-              </div>
-            )}
           </div>
 
           {/* Date + Time */}
@@ -2316,18 +2279,10 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
             </div>
           </div>
 
-          {/* Custom time override - 整點時段選擇 */}
+          {/* Custom time override */}
           <div>
             <label className="field-label">自訂時間（可不選時段直接輸入）</label>
-            <select value={form.time} onChange={e=>setForm(p=>({...p,time:e.target.value}))}
-              className="field-input" style={{ cursor:"pointer" }}>
-              <option value="">-- 選擇整點時段 --</option>
-              {Array.from({ length: SALON.hours.close - SALON.hours.open }, (_, i) => {
-                const h = SALON.hours.open + i;
-                const val = `${String(h).padStart(2,"0")}:00`;
-                return <option key={val} value={val}>{val}</option>;
-              })}
-            </select>
+            <input type="time" value={form.time} onChange={e=>setForm(p=>({...p,time:e.target.value}))} className="field-input" step={SALON.slotMinutes*60}/>
           </div>
 
           {/* Customer info */}
@@ -2397,13 +2352,20 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
 
 
 
-function CalendarView({ bookings, onUpdateStatus, onDelete, onEditBooking, isMobile, lineSettings, stylistSettings, onAddBooking, stylists=DEFAULT_STYLISTS }) {
+function CalendarView({ bookings, onUpdateStatus, onDelete, onEditBooking, isMobile, lineSettings, stylistSettings, onAddBooking, stylists=DEFAULT_STYLISTS, jumpTo }) {
   const today = new Date();
   const [calDate, setCalDate] = useState({ y:today.getFullYear(), m:today.getMonth() });
   const [selectedDay, setSelectedDay] = useState(today.getDate());
   const [filterStylist, setFilterStylist] = useState("all");
 
   const [showManual, setShowManual] = useState(false);
+
+  // 收到 jumpTo（{y,m,d}）時自動跳轉到指定日期
+  useEffect(() => {
+    if (!jumpTo) return;
+    setCalDate({ y: jumpTo.y, m: jumpTo.m });
+    setSelectedDay(jumpTo.d);
+  }, [jumpTo]);
   const daysInMonth = getDaysInMonth(calDate.y, calDate.m);
   const firstDay    = getFirstDayOfMonth(calDate.y, calDate.m);
 
@@ -2467,10 +2429,10 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, onEditBooking, isMob
       {/* Calendar grid */}
       <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:"var(--r)", overflow:"hidden", marginBottom:"1rem" }}>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", background:"#f5f3f0" }}>
-          {WEEK_DAYS.map(d=><div key={d} style={{ textAlign:"center", padding: isMobile?".3rem .05rem":".5rem .1rem", fontSize: isMobile?".72rem":".84rem", color:"var(--ink3)", borderBottom:"1px solid var(--line)", minWidth:0, overflow:"hidden" }}>{d}</div>)}
+          {WEEK_DAYS.map(d=><div key={d} style={{ textAlign:"center", padding:".5rem .1rem", fontSize:".84rem", color:"var(--ink3)", borderBottom:"1px solid var(--line)" }}>{d}</div>)}
         </div>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)" }}>
-          {Array(firstDay).fill(null).map((_,i)=><div key={`e${i}`} style={{ minWidth:0, overflow:"hidden", borderRight:"1px solid rgba(0,0,0,.03)", borderBottom:"1px solid rgba(0,0,0,.03)", minHeight: isMobile?44:60 }}/>)}
+          {Array(firstDay).fill(null).map((_,i)=><div key={`e${i}`} style={{ borderRight:"1px solid rgba(0,0,0,.03)", borderBottom:"1px solid rgba(0,0,0,.03)", minHeight: isMobile?44:60 }}/>)}
           {Array(daysInMonth).fill(null).map((_,i)=>{
             const day  = i+1;
             const bk   = bookingsOnDay(day);
@@ -2479,20 +2441,16 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, onEditBooking, isMob
             return (
               <div key={day} onClick={()=>setSelectedDay(isSel?null:day)}
                 style={{
-                  minHeight: isMobile?44:60,
-                  padding: isMobile?".15rem .08rem":".3rem",
-                  cursor:"pointer",
-                  minWidth:0, overflow:"hidden",
+                  minHeight: isMobile?44:60, padding: isMobile?".2rem .15rem":".3rem", cursor:"pointer",
                   borderRight:"1px solid rgba(0,0,0,.03)", borderBottom:"1px solid rgba(0,0,0,.03)",
                   background: isSel?"rgba(196,131,90,.1)":isToday?"rgba(196,131,90,.04)":"transparent",
                   transition:"background .15s",
                 }}>
                 <div style={{ display:"flex", justifyContent:"center", marginBottom:".1rem" }}>
                   <span style={{
-                    width: isMobile?18:24, height: isMobile?18:24,
+                    width: isMobile?20:24, height: isMobile?20:24,
                     borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center",
-                    fontSize: isMobile?".6rem":".72rem",
-                    flexShrink:0,
+                    fontSize: isMobile?".62rem":".72rem",
                     background: isToday?"var(--copper)":isSel?"rgba(196,131,90,.2)":"transparent",
                     color: isToday?"#fff":isSel?"var(--copper)":"#555555",
                     fontWeight: isToday||isSel?700:400,
@@ -2502,21 +2460,12 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, onEditBooking, isMob
                   const st  = STYLISTS.find(s=>s.id===b.stylistId);
                   const svc = SERVICES.find(s=>s.id===b.serviceId);
                   return (
-                    <div key={bi} style={{
-                      fontSize: isMobile?".48rem":".64rem",
-                      padding: isMobile?"0 .1rem":".05rem .2rem",
-                      borderRadius:3, marginBottom:".08rem",
-                      background:`rgba(${hexToRgb(st?.color||"#c4835a")},.18)`,
-                      color:st?.color||"var(--copper)",
-                      whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
-                      lineHeight: isMobile?1.5:1.4,
-                      maxWidth:"100%",
-                    }}>
-                      {isMobile ? svc?.zh : `${b.time} ${svc?.zh}`}
+                    <div key={bi} style={{ fontSize: isMobile?".52rem":".64rem", padding:".05rem .2rem", borderRadius:3, marginBottom:".08rem", background:`rgba(${hexToRgb(st?.color||"#c4835a")},.18)`, color:st?.color||"var(--copper)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", lineHeight:1.4 }}>
+                      {b.time} {svc?.zh}
                     </div>
                   );
                 })}
-                {bk.length>1 && <div style={{ fontSize: isMobile?".46rem":".58rem", color:"#aaaaaa", textAlign:"center" }}>+{bk.length-1}</div>}
+                {bk.length>1 && <div style={{ fontSize: isMobile?".48rem":".58rem", color:"#aaaaaa", textAlign:"center" }}>+{bk.length-1}</div>}
               </div>
             );
           })}
@@ -4010,6 +3959,7 @@ export default function SalonApp() {
   // ── 所有 hooks 必須在任何條件式返回之前宣告 ──
   const [tab, setTab]               = useState("book");
   const [isMobile, setIsMobile]     = useState(() => window.innerWidth < 640);
+  const [calendarJump, setCalendarJump] = useState(null); // {y,m,d} 跳轉到指定日期
   const { bookings, loaded, fbReady, addBooking, updateStatus, updateBooking, deleteBooking } = useBookings();
   const { settings: lineSettings, save: saveLineSettings } = useLINESettings();
   const stylistMgr   = useStylistSettings();
@@ -4047,9 +3997,9 @@ export default function SalonApp() {
       addBooking(booking);
       customerMgr.upsertFromBooking(booking, svcName, stylistName);
 
-      // ── 預約成功立即通知店主（僅限線上預約） ──
+      // ── 預約成功立即通知店主 ──
       const webhookUrl = lineSettings?.webhookUrl;
-      if (webhookUrl && booking.source === "online") {
+      if (webhookUrl) {
         // 取得 base URL：移除結尾的 /notify, /notify-new, /webhook 等路徑
         const baseUrl = webhookUrl.replace(/\/(notify(-new|-cancel)?|webhook)\/?$/i, "");
         const cancelUrl = booking.id && booking.cancelToken
@@ -4229,7 +4179,17 @@ export default function SalonApp() {
 
           {/* Stats */}
           <div style={{ display:"flex", gap:".5rem", alignItems:"center" }}>
-            <AdminSecretEntry onEnter={()=>setTab("calendar")} adminAuth={adminAuth} isMobile={isMobile} todayCount={todayBookings.length} pendingCount={pendingCount}/>
+            <AdminSecretEntry onEnter={()=>setTab("calendar")} adminAuth={adminAuth} isMobile={isMobile} todayCount={todayBookings.length} pendingCount={pendingCount}
+              onPendingClick={()=>{
+                const first = bookings
+                  .filter(b => b.status==="pending")
+                  .sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time))[0];
+                if (!first) return;
+                const [y,m,d] = first.date.split("-").map(Number);
+                setCalendarJump({ y, m: m-1, d });
+                setTab("calendar");
+              }}
+            />
             {/* Firebase 連線狀態 */}
             <div title={FIREBASE_READY ? (fbReady ? "雲端同步正常" : "連線中…") : "未設定 Firebase（本機模式）"}
               style={{ width:28, height:28, borderRadius:"50%", background: FIREBASE_READY ? (fbReady?"rgba(99,179,237,.15)":"rgba(200,200,200,.2)") : "rgba(196,188,154,.1)", border:`1px solid ${FIREBASE_READY?(fbReady?"rgba(99,179,237,.5)":"rgba(180,180,180,.4)"):"rgba(196,188,154,.3)"}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:".7rem" }}>
@@ -4289,7 +4249,7 @@ export default function SalonApp() {
               {ADMIN_TABS.has(tab) && (
                 adminAuth.unlocked
                   ? <>
-                      {tab==="calendar"  && <CalendarView bookings={bookings} onUpdateStatus={updateStatus} onDelete={deleteBooking} onEditBooking={updateBooking} isMobile={isMobile} lineSettings={lineSettings} stylistSettings={stylistMgr.settings} onAddBooking={handleBook} stylists={STYLISTS}/>}
+                      {tab==="calendar"  && <CalendarView bookings={bookings} onUpdateStatus={updateStatus} onDelete={deleteBooking} onEditBooking={updateBooking} isMobile={isMobile} lineSettings={lineSettings} stylistSettings={stylistMgr.settings} onAddBooking={handleBook} stylists={STYLISTS} jumpTo={calendarJump}/>}
                       {tab==="schedule"  && <ScheduleView bookings={bookings} isMobile={isMobile} stylistSettings={stylistMgr.settings} onAddBooking={handleBook} stylists={STYLISTS}/>}
                       {tab==="stylists"  && <StylistRoster bookings={bookings} isMobile={isMobile} stylistMgr={stylistMgr} stylistsMgr={stylistsMgr}/>}
                       {tab==="customers" && <CustomersView customers={customerMgr.customers} onDelete={customerMgr.deleteCustomer} bookings={bookings} isMobile={isMobile}/>}
