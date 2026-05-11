@@ -200,7 +200,7 @@ function genCancelToken() {
 }
 
 const ALL_SLOTS  = generateSlots(SALON.hours.open, SALON.hours.close, SALON.slotMinutes);
-const HOUR_SLOTS = generateSlots(SALON.hours.open, SALON.hours.close, 60); // 線上預約整點時段
+const HOUR_SLOTS = generateSlots(SALON.hours.open, SALON.hours.close, 60);
 
 /* ═══════════════════════════════════════════════════════════
    STORAGE SHIM
@@ -2446,10 +2446,10 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, onEditBooking, isMob
       {/* Calendar grid */}
       <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:"var(--r)", overflow:"hidden", marginBottom:"1rem" }}>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", background:"#f5f3f0" }}>
-          {WEEK_DAYS.map(d=><div key={d} style={{ textAlign:"center", padding:".5rem .1rem", fontSize:".84rem", color:"var(--ink3)", borderBottom:"1px solid var(--line)" }}>{d}</div>)}
+          {WEEK_DAYS.map(d=><div key={d} style={{ textAlign:"center", padding: isMobile?".3rem 0":".5rem .1rem", fontSize: isMobile?".7rem":".84rem", color:"var(--ink3)", borderBottom:"1px solid var(--line)", minWidth:0, overflow:"hidden" }}>{d}</div>)}
         </div>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)" }}>
-          {Array(firstDay).fill(null).map((_,i)=><div key={`e${i}`} style={{ borderRight:"1px solid rgba(0,0,0,.03)", borderBottom:"1px solid rgba(0,0,0,.03)", minHeight: isMobile?44:60 }}/>)}
+          {Array(firstDay).fill(null).map((_,i)=><div key={`e${i}`} style={{ minWidth:0, overflow:"hidden", borderRight:"1px solid rgba(0,0,0,.03)", borderBottom:"1px solid rgba(0,0,0,.03)", minHeight: isMobile?48:60 }}/>)}
           {Array(daysInMonth).fill(null).map((_,i)=>{
             const day  = i+1;
             const bk   = bookingsOnDay(day);
@@ -2458,34 +2458,55 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, onEditBooking, isMob
             return (
               <div key={day} onClick={()=>setSelectedDay(isSel?null:day)}
                 style={{
-                  minHeight: isMobile?44:60, padding: isMobile?".2rem .15rem":".3rem", cursor:"pointer",
+                  minHeight: isMobile?48:60,
+                  padding: isMobile?".15rem .06rem":".3rem",
+                  cursor:"pointer",
+                  minWidth:0, overflow:"hidden",
                   borderRight:"1px solid rgba(0,0,0,.03)", borderBottom:"1px solid rgba(0,0,0,.03)",
                   background: isSel?"rgba(196,131,90,.1)":isToday?"rgba(196,131,90,.04)":"transparent",
                   transition:"background .15s",
+                  boxSizing:"border-box",
                 }}>
-                <div style={{ display:"flex", justifyContent:"center", marginBottom:".1rem" }}>
+                {/* 日期數字 */}
+                <div style={{ display:"flex", justifyContent:"center", marginBottom:".08rem" }}>
                   <span style={{
-                    width: isMobile?20:24, height: isMobile?20:24,
+                    width: isMobile?17:24, height: isMobile?17:24,
                     borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center",
-                    fontSize: isMobile?".62rem":".72rem",
+                    fontSize: isMobile?".58rem":".72rem",
+                    flexShrink:0,
                     background: isToday?"var(--copper)":isSel?"rgba(196,131,90,.2)":"transparent",
-                    color: isToday?"#fff":isSel?"var(--copper)":"#555555",
+                    color: isToday?"#fff":isSel?"var(--copper)":"#555",
                     fontWeight: isToday||isSel?700:400,
                   }}>{day}</span>
                 </div>
+                {/* 預約標籤：手機版只顯示服務名，不顯示時間 */}
                 {bk.slice(0,1).map((b,bi)=>{
                   const st  = STYLISTS.find(s=>s.id===b.stylistId);
                   const svc = SERVICES.find(s=>s.id===b.serviceId);
                   return (
-                    <div key={bi} style={{ fontSize: isMobile?".52rem":".64rem", padding:".05rem .2rem", borderRadius:3, marginBottom:".08rem", background:`rgba(${hexToRgb(st?.color||"#c4835a")},.18)`, color:st?.color||"var(--copper)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", lineHeight:1.4 }}>
-                      {b.time} {svc?.zh}
+                    <div key={bi} style={{
+                      fontSize: isMobile?".46rem":".62rem",
+                      padding: isMobile?"0 .08rem":".05rem .2rem",
+                      borderRadius:3, marginBottom:".06rem",
+                      background:`rgba(${hexToRgb(st?.color||"#c4835a")},.18)`,
+                      color:st?.color||"var(--copper)",
+                      whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
+                      lineHeight:1.5, maxWidth:"100%", display:"block",
+                    }}>
+                      {isMobile ? svc?.zh : `${b.time} ${svc?.zh}`}
                     </div>
                   );
                 })}
-                {bk.length>1 && <div style={{ fontSize: isMobile?".48rem":".58rem", color:"#aaaaaa", textAlign:"center" }}>+{bk.length-1}</div>}
+                {bk.length>1 && (
+                  <div style={{ fontSize: isMobile?".44rem":".56rem", color:"#aaa", textAlign:"center", lineHeight:1.3 }}>
+                    +{bk.length-1}
+                  </div>
+                )}
               </div>
             );
           })}
+        </div>
+      </div>
         </div>
       </div>
 
@@ -4198,9 +4219,7 @@ export default function SalonApp() {
           <div style={{ display:"flex", gap:".5rem", alignItems:"center" }}>
             <AdminSecretEntry onEnter={()=>setTab("calendar")} adminAuth={adminAuth} isMobile={isMobile} todayCount={todayBookings.length} pendingCount={pendingCount}
               onPendingClick={()=>{
-                const first = bookings
-                  .filter(b => b.status==="pending")
-                  .sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time))[0];
+                const first = bookings.filter(b=>b.status==="pending").sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time))[0];
                 if (!first) return;
                 const [y,m,d] = first.date.split("-").map(Number);
                 setCalendarJump({ y, m: m-1, d });
