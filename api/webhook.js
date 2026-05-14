@@ -1,14 +1,12 @@
 /**
  * api/webhook.js
  * POST /api/webhook — LINE Messaging API Webhook
- *
- * 必須關閉 Vercel 預設的 body parser，才能取得 raw body 做簽章驗證
  */
 
 const { verifySignature, replyToUser } = require("./_line-utils");
 
-// ⚠️ 關鍵設定：關閉 Vercel 內建的 JSON body parser
-export const config = {
+// ⚠️ 關鍵：關閉 Vercel 內建的 JSON body parser（純 CommonJS 寫法）
+module.exports.config = {
   api: { bodyParser: false },
 };
 
@@ -22,8 +20,7 @@ function getRawBody(req) {
   });
 }
 
-module.exports = async function handler(req, res) {
-  // LINE webhook 只允許 POST
+async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
   // 先回 200，LINE 要求在 1 秒內回應
@@ -65,4 +62,6 @@ module.exports = async function handler(req, res) {
   } catch (e) {
     console.error("[webhook]", e.message);
   }
-};
+}
+
+module.exports = handler;
