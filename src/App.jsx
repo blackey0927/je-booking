@@ -2507,8 +2507,6 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, onEditBooking, isMob
           })}
         </div>
       </div>
-        </div>
-      </div>
 
       {/* Selected day detail */}
       {selectedDay && (
