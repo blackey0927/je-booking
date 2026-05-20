@@ -1691,12 +1691,6 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
               style={{ padding:".78rem 1rem", fontSize:".95rem", letterSpacing:".08em" }}>
               {linePasted ? "✓ 已設定 LINE，開始預約 →" : "略過，直接開始預約 →"}
             </button>
-            <button onClick={()=>setShowHairAnalysis(true)}
-              style={{ padding:".65rem 1rem", fontSize:".88rem", letterSpacing:".06em",
-                border:"1px solid var(--copper)", borderRadius:8, background:"transparent",
-                color:"var(--copper)", cursor:"pointer", transition:"all .15s" }}>
-              ✦ 不知道要做什麼？先做髮型分析
-            </button>
             <a href="/hair-oracle.html" target="_blank" rel="noopener"
               style={{ display:"block", padding:".65rem 1rem", fontSize:".88rem", letterSpacing:".06em",
                 border:"1px solid rgba(160,131,90,.5)", borderRadius:8, background:"rgba(160,131,90,.06)",
