@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 
 /* ── Error Boundary ─────────────────────────────────────── */
 class ErrorBoundary extends React.Component {
@@ -944,9 +944,307 @@ function AdminLockScreen({ onUnlock, isMobile }) {
 /* ═══════════════════════════════════════════════════════════
    BOOKING FLOW (5 steps)
 ═══════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════════════════════
+   HAIR ANALYSIS MODAL — 問卷式髮型分析（無 API）
+══════════════════════════════════════════════════════════════ */
+const HAIR_STYLES = [
+  {
+    id:"airy_bang",    name:"空氣瀏海層次剪",
+    desc:"輕盈瀏海修飾臉型，層次剪法讓髮量感提升，自然蓬鬆不費力。日常打理輕鬆，非常適合上班族與學生。",
+    suits:{ face:["round","heart","notSure"], texture:["fine","medium"], lifestyle:["office","student"], style:["korean","natural"] },
+    services:["cut_female","cut_bang"], tip:"建議搭配空氣燙更持久",
+  },
+  {
+    id:"short_clean",  name:"俐落短髮",
+    desc:"清爽乾淨的短髮造型，突顯五官輪廓，搭配精準刀工讓整體更有型。洗完即乾，最省時的選擇。",
+    suits:{ face:["oval","square","long"], texture:["medium","coarse"], lifestyle:["sport","office"], style:["natural","mature"] },
+    services:["cut_female","shampoo"], tip:"可搭配修眉讓五官更立體",
+  },
+  {
+    id:"collarbone_wave", name:"鎖骨波浪捲",
+    desc:"鎖骨長度搭配輕波浪，韓系感十足。修飾臉型同時增添甜美柔和氣質，是最受歡迎的女性髮型之一。",
+    suits:{ face:["round","heart","oval"], texture:["medium","fine"], lifestyle:["student","home"], style:["korean","fashion"] },
+    services:["cut_female","perm","treatment"], tip:"細軟髮質燙後效果明顯，建議加護髮",
+  },
+  {
+    id:"long_straight",  name:"光澤長直髮",
+    desc:"修護後的長直髮充滿光澤感，簡約大方。適合想要低維護又顯氣質的你，搭配護髮療程效果更佳。",
+    suits:{ face:["oval","long"], texture:["damaged","medium"], lifestyle:["office","home"], style:["japan","mature","natural"] },
+    services:["cut_female","treatment"], tip:"受損髮質優先做護髮再剪",
+  },
+  {
+    id:"big_wave",       name:"蓬鬆大波浪",
+    desc:"充滿個性的大波浪捲，增加髮量感與時尚氣息。適合臉型修長或偏心形臉，視覺上增添飽滿感。",
+    suits:{ face:["long","heart","oval"], texture:["curly","coarse"], lifestyle:["home","student"], style:["fashion","casual"] },
+    services:["perm","treatment","cut_female"], tip:"捲度持久約 3-4 個月",
+  },
+  {
+    id:"japan_inward",   name:"日系內扣剪",
+    desc:"溫柔的內扣弧度修飾下顎線，日系簡約風格，耐看不退流行。適合各種臉型，是百搭的選擇。",
+    suits:{ face:["oval","square","round","long","heart","notSure"], texture:["medium","fine","coarse"], lifestyle:["office","student","home"], style:["japan","natural","mature"] },
+    services:["cut_female"], tip:"定期修剪（約 2 個月）可維持最佳弧度",
+  },
+  {
+    id:"french_casual",  name:"法式慵懶捲",
+    desc:"不刻意的捲曲感，充滿隨性魅力。搭配適當護髮讓捲度更自然健康，非常適合追求時髦感的你。",
+    suits:{ face:["oval","heart"], texture:["curly","medium"], lifestyle:["home","student"], style:["fashion","casual","korean"] },
+    services:["perm","treatment"], tip:"日常可用護髮乳保濕維持捲度",
+  },
+  {
+    id:"men_fade",       name:"男士 Fade 剪",
+    desc:"兩側漸層刀法俐落，頂部留適當長度可做各種造型。清爽耐看，是男士最實用的選擇。",
+    suits:{ face:["oval","square","round","long","heart","notSure"], texture:["medium","coarse","fine"], lifestyle:["office","student","sport","home"], style:["natural","mature","fashion","casual"] },
+    services:["cut_male","shampoo"], tip:"建議每 3-4 週修剪一次維持型",
+  },
+];
+
+function calcHairScore(style, answers) {
+  let score = 0;
+  const { face, texture, lifestyle, wantStyle, gender } = answers;
+  if (gender === "male" && style.id === "men_fade") return 100;
+  if (gender === "male" && style.id !== "men_fade") return 0;
+  if (gender === "female" && style.id === "men_fade") return 0;
+  if (style.suits.face.includes(face)) score += 3;
+  if (style.suits.texture.includes(texture)) score += 3;
+  if (style.suits.lifestyle.includes(lifestyle)) score += 2;
+  if (style.suits.style.includes(wantStyle)) score += 3;
+  return score;
+}
+
+function HairAnalysisModal({ onClose, onStartBooking, services = DEFAULT_SERVICES }) {
+  const [step, setStep] = useState(0); // 0=q, 1=result
+  const [ans, setAns] = useState({ gender:"", face:"", texture:"", lifestyle:"", wantStyle:"" });
+  const [photoState, setPhotoState] = useState("idle"); // idle | loading | done | error
+  const [photoMsg, setPhotoMsg] = useState("");
+  const fileInputRef = useRef(null);
+
+  const analyzePhoto = async (file) => {
+    setPhotoState("loading");
+    setPhotoMsg("AI 分析中...");
+    try {
+      const base64 = await new Promise((res, rej) => {
+        const reader = new FileReader();
+        reader.onload = e => res(e.target.result.split(",")[1]);
+        reader.onerror = rej;
+        reader.readAsDataURL(file);
+      });
+      const mediaType = file.type || "image/jpeg";
+      const resp = await fetch("/api/analyze-face", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageBase64: base64, mediaType }),
+      });
+      const data = await resp.json();
+      if (data.face && data.face !== "notSure") {
+        const faceLabels = { round:"圓形臉", oval:"橢圓臉", square:"方形臉", long:"長形臉", heart:"心形臉" };
+        setAns(p => ({ ...p, face: data.face }));
+        setPhotoState("done");
+        setPhotoMsg(`✓ 偵測為「${faceLabels[data.face]}」，已自動填入`);
+      } else {
+        setPhotoState("error");
+        setPhotoMsg("無法判斷臉型，請手動選擇或換一張正面照");
+      }
+    } catch(e) {
+      setPhotoState("error");
+      setPhotoMsg("分析失敗，請手動選擇臉型");
+    }
+  };
+
+  const qs = [
+    { key:"gender",    label:"你是？",           opts:[{v:"female",l:"女生"},{v:"male",l:"男生"}] },
+    { key:"face",      label:"你的臉型比較接近？", opts:[{v:"round",l:"圓形臉"},{v:"oval",l:"橢圓臉"},{v:"square",l:"方形臉"},{v:"long",l:"長形臉"},{v:"heart",l:"心形臉"},{v:"notSure",l:"不確定"}] },
+    { key:"texture",   label:"你的髮質狀況？",    opts:[{v:"fine",l:"細軟"},{v:"medium",l:"適中"},{v:"coarse",l:"粗硬"},{v:"curly",l:"自然捲"},{v:"damaged",l:"已受損"}] },
+    { key:"lifestyle", label:"你的生活型態？",    opts:[{v:"office",l:"上班族"},{v:"student",l:"學生"},{v:"sport",l:"運動愛好者"},{v:"home",l:"居家為主"}] },
+    { key:"wantStyle", label:"嚮往的髮型風格？",  opts:[{v:"natural",l:"自然清爽"},{v:"fashion",l:"時尚有型"},{v:"korean",l:"韓系甜美"},{v:"japan",l:"日系簡約"},{v:"mature",l:"成熟穩重"},{v:"casual",l:"隨性不拘"}] },
+  ];
+
+  const allAnswered = qs.every(q => ans[q.key]);
+
+  const results = useMemo(() => {
+    if (!allAnswered) return [];
+    return HAIR_STYLES
+      .map(s => ({ ...s, score: calcHairScore(s, ans) }))
+      .filter(s => s.score > 0)
+      .sort((a,b) => b.score - a.score)
+      .slice(0, 3);
+  }, [ans, allAnswered]);
+
+  const answerTag = (k, v) => setAns(p => ({ ...p, [k]: v }));
+
+  const qBtnStyle = (selected) => ({
+    padding:".38rem .9rem", borderRadius:20, fontSize:".82rem", cursor:"pointer",
+    border:`1px solid ${selected?"var(--copper)":"var(--line)"}`,
+    background: selected?"var(--copper)":"var(--card)",
+    color: selected?"#fff":"var(--ink2)",
+    transition:"all .15s",
+  });
+
+  const svcName = (id) => {
+    const s = (services || DEFAULT_SERVICES).find(sv => sv.id === id);
+    return s ? s.zh : id;
+  };
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(28,24,22,.55)", zIndex:1000,
+      display:"flex", alignItems:"center", justifyContent:"center", padding:"1rem" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <div style={{ background:"var(--card)", borderRadius:"var(--r)", width:"100%", maxWidth:520,
+        maxHeight:"88vh", overflowY:"auto", boxShadow:"0 20px 60px rgba(28,24,22,.28)", display:"flex", flexDirection:"column" }}>
+
+        {/* Header */}
+        <div style={{ padding:"1.1rem 1.25rem .8rem", borderBottom:"1px solid var(--line)", display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
+          <div>
+            <div style={{ fontSize:".92rem", fontWeight:600, color:"var(--ink)", letterSpacing:".04em" }}>✦ 髮型分析</div>
+            <div style={{ fontSize:".72rem", color:"var(--ink3)", marginTop:".15rem" }}>回答 5 題，找出最適合你的髮型</div>
+          </div>
+          <button onClick={onClose} style={{ width:28, height:28, borderRadius:"50%", border:"1px solid var(--line)", background:"var(--bg)", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontSize:".8rem", color:"var(--ink3)" }}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding:"1.1rem 1.25rem", flex:1 }}>
+
+          {step === 0 && (
+            <div style={{ animation:"fadeUp .3s ease" }}>
+
+              {/* ── 照片上傳（選用）── */}
+              <div style={{ marginBottom:"1.4rem", padding:".85rem 1rem",
+                border:"1px dashed var(--copper)", borderRadius:10,
+                background:"rgba(196,131,90,.04)" }}>
+                <div style={{ fontSize:".8rem", fontWeight:600, color:"var(--copper)", marginBottom:".5rem" }}>
+                  📷 上傳正面照片，AI 自動判斷臉型（選用）
+                </div>
+                <div style={{ fontSize:".73rem", color:"var(--ink3)", marginBottom:".65rem", lineHeight:1.6 }}>
+                  上傳一張正臉清晰照，系統自動填入臉型答案，省去猜測步驟
+                </div>
+                <input ref={fileInputRef} type="file" accept="image/*" style={{ display:"none" }}
+                  onChange={e => { const f = e.target.files[0]; if(f) analyzePhoto(f); e.target.value=""; }}
+                />
+                {photoState === "idle" && (
+                  <button onClick={()=>fileInputRef.current?.click()}
+                    style={{ padding:".38rem .9rem", borderRadius:20, fontSize:".78rem",
+                      border:"1px solid var(--copper)", color:"var(--copper)",
+                      background:"transparent", cursor:"pointer" }}>
+                    選擇照片
+                  </button>
+                )}
+                {photoState === "loading" && (
+                  <div style={{ fontSize:".78rem", color:"var(--ink3)", display:"flex", alignItems:"center", gap:".4rem" }}>
+                    <span style={{ display:"inline-block", width:12, height:12, borderRadius:"50%",
+                      border:"2px solid var(--copper)", borderTopColor:"transparent",
+                      animation:"spin .8s linear infinite" }}/>
+                    {photoMsg}
+                  </div>
+                )}
+                {(photoState === "done" || photoState === "error") && (
+                  <div style={{ display:"flex", alignItems:"center", gap:".6rem" }}>
+                    <span style={{ fontSize:".78rem", color: photoState==="done"?"var(--copper)":"#c44a3a" }}>
+                      {photoMsg}
+                    </span>
+                    <button onClick={()=>{ setPhotoState("idle"); setPhotoMsg(""); fileInputRef.current?.click(); }}
+                      style={{ fontSize:".72rem", padding:".2rem .55rem", borderRadius:20,
+                        border:"1px solid var(--line)", background:"var(--bg)",
+                        color:"var(--ink3)", cursor:"pointer" }}>
+                      換張照片
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {qs.map((q, qi) => (
+                <div key={q.key} style={{ marginBottom:"1.2rem" }}>
+                  <div style={{ fontSize:".84rem", fontWeight:600, color:"var(--ink)", marginBottom:".6rem" }}>
+                    {qi+1}. {q.label}
+                    {q.key==="face" && photoState==="done" && (
+                      <span style={{ marginLeft:".5rem", fontSize:".68rem", color:"var(--copper)",
+                        background:"rgba(196,131,90,.12)", padding:".1rem .45rem", borderRadius:20 }}>
+                        AI 已填入
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:".4rem" }}>
+                    {q.opts.map(o => (
+                      <button key={o.v} style={qBtnStyle(ans[q.key]===o.v)} onClick={()=>answerTag(q.key, o.v)}>
+                        {o.l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              <button
+                onClick={()=>setStep(1)}
+                disabled={!allAnswered}
+                className="btn-copper"
+                style={{ width:"100%", padding:".75rem", fontSize:".92rem", letterSpacing:".06em", marginTop:".4rem",
+                  opacity: allAnswered ? 1 : .45, cursor: allAnswered ? "pointer" : "not-allowed" }}>
+                查看我的髮型推薦 →
+              </button>
+              {!allAnswered && (
+                <p style={{ textAlign:"center", fontSize:".72rem", color:"var(--ink4)", margin:".5rem 0 0" }}>請先回答所有問題</p>
+              )}
+            </div>
+          )}
+
+          {step === 1 && (
+            <div style={{ animation:"fadeUp .3s ease" }}>
+              <div style={{ fontSize:".76rem", color:"var(--ink3)", marginBottom:"1.1rem",
+                background:"rgba(196,131,90,.08)", borderRadius:8, padding:".5rem .8rem",
+                borderLeft:"3px solid var(--copper)" }}>
+                根據你的回答，為你推薦以下髮型 ✦
+              </div>
+
+              {results.map((r, idx) => (
+                <div key={r.id} style={{ border:"1px solid var(--line)", borderRadius:10, padding:"1rem 1.1rem",
+                  marginBottom:".85rem", background: idx===0?"rgba(196,131,90,.05)":"var(--card)",
+                  borderColor: idx===0?"rgba(196,131,90,.35)":"var(--line)" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:".5rem", marginBottom:".5rem" }}>
+                    {idx===0 && (
+                      <span style={{ fontSize:".65rem", padding:".18rem .55rem", borderRadius:20,
+                        background:"var(--copper)", color:"#fff", fontWeight:600, letterSpacing:".04em" }}>
+                        最推薦
+                      </span>
+                    )}
+                    <span style={{ fontSize:".9rem", fontWeight:600, color:"var(--ink)" }}>{r.name}</span>
+                  </div>
+                  <p style={{ fontSize:".78rem", color:"var(--ink2)", lineHeight:1.7, marginBottom:".7rem" }}>{r.desc}</p>
+                  {r.tip && (
+                    <p style={{ fontSize:".72rem", color:"var(--copper)", marginBottom:".7rem" }}>💡 {r.tip}</p>
+                  )}
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:".4rem" }}>
+                    {r.services.map(sid => (
+                      <button key={sid}
+                        onClick={() => onStartBooking(sid, r.name)}
+                        style={{ padding:".3rem .75rem", borderRadius:20, fontSize:".76rem",
+                          border:"1px solid var(--copper)", color:"var(--copper)", background:"transparent",
+                          cursor:"pointer", transition:"all .15s" }}
+                        onMouseOver={e=>{ e.currentTarget.style.background="var(--copper)"; e.currentTarget.style.color="#fff"; }}
+                        onMouseOut={e=>{ e.currentTarget.style.background="transparent"; e.currentTarget.style.color="var(--copper)"; }}>
+                        預約「{svcName(sid)}」
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              <button onClick={()=>setStep(0)}
+                style={{ width:"100%", padding:".6rem", fontSize:".82rem", background:"var(--bg)",
+                  border:"1px solid var(--line)", borderRadius:8, color:"var(--ink3)", cursor:"pointer", marginTop:".2rem" }}>
+                ← 重新填寫
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEFAULT_STYLISTS, services=DEFAULT_SERVICES, svcPhotos={}, salonConfig={}, adminAuth={} }) {
   // step -1 = LINE 設定前置步驟, 0 = 選服務, 1 = 選設計師, ...
   const [step, setStep] = useState(-1);
+  const [showHairAnalysis, setShowHairAnalysis] = useState(false);
   const [sel, setSel]   = useState({ services:[], stylist:null, date:null, time:null });
   const [form, setForm] = useState({ name:"", phone:"", lineId:"", notes:"" });
   const [done, setDone] = useState(null);
@@ -1115,6 +1413,19 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
 
   return (
     <div style={{ maxWidth:600, margin:"0 auto" }}>
+
+      {/* ── Hair Analysis Modal ── */}
+      {showHairAnalysis && (
+        <HairAnalysisModal
+          onClose={()=>setShowHairAnalysis(false)}
+          services={services}
+          onStartBooking={(serviceId, hairStyleNote) => {
+            setShowHairAnalysis(false);
+            setForm(p=>({ ...p, serviceIds:[serviceId], notes: hairStyleNote ? `AI髮型建議：${hairStyleNote}` : p.notes }));
+            setStep(0);
+          }}
+        />
+      )}
 
       {/* ── STEP -1: 歡迎入口 + LINE 設定 ── */}
       {step===-1 && (
@@ -1380,6 +1691,19 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
               style={{ padding:".78rem 1rem", fontSize:".95rem", letterSpacing:".08em" }}>
               {linePasted ? "✓ 已設定 LINE，開始預約 →" : "略過，直接開始預約 →"}
             </button>
+            <button onClick={()=>setShowHairAnalysis(true)}
+              style={{ padding:".65rem 1rem", fontSize:".88rem", letterSpacing:".06em",
+                border:"1px solid var(--copper)", borderRadius:8, background:"transparent",
+                color:"var(--copper)", cursor:"pointer", transition:"all .15s" }}>
+              ✦ 不知道要做什麼？先做髮型分析
+            </button>
+            <a href="/hair-oracle.html" target="_blank" rel="noopener"
+              style={{ display:"block", padding:".65rem 1rem", fontSize:".88rem", letterSpacing:".06em",
+                border:"1px solid rgba(160,131,90,.5)", borderRadius:8, background:"rgba(160,131,90,.06)",
+                color:"var(--ink2)", cursor:"pointer", textDecoration:"none", textAlign:"center",
+                transition:"all .15s" }}>
+              ✦ AI 深度造型診斷 · HAIR ORACLE
+            </a>
             {!linePasted && (
               <p style={{ textAlign:"center", fontSize:".76rem", color:"var(--ink4)", margin:0 }}>
                 不需要 LINE 通知也可以正常預約
