@@ -1,7 +1,6 @@
 {
   "rewrites": [
-    { "source": "/hair-oracle.html", "destination": "/hair-oracle.html" },
-    { "source": "/((?!api/).*\\.html)", "destination": "/$1" },
+    { "source": "/(.*)\\.html", "destination": "/$1.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
