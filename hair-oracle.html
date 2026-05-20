@@ -1,0 +1,1474 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>HAIR ORACLE · JE染燙快剪屋</title>
+  <meta name="theme-color" content="#0d0b08"/>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#0d0b08;color:#e8ddd0;font-family:"DM Sans",sans-serif}
+    #root{min-height:100vh}
+    /* 返回按鈕 */
+    #back-btn{
+      position:fixed;top:1rem;left:1rem;z-index:9999;
+      display:flex;align-items:center;gap:.4rem;
+      padding:.4rem .85rem;border-radius:20px;
+      border:1px solid rgba(200,169,126,.3);
+      background:rgba(13,11,8,.85);
+      color:#c8a97e;font-size:.72rem;letter-spacing:.06em;
+      cursor:pointer;text-decoration:none;
+      backdrop-filter:blur(8px);
+      transition:all .2s;
+    }
+    #back-btn:hover{border-color:#c8a97e;background:rgba(200,169,126,.08)}
+  </style>
+</head>
+<body>
+  <a id="back-btn" href="https://je-booking.vercel.app">← 回預約系統</a>
+  <div id="root"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+  <script type="text/babel" data-presets="react">
+const { useState, useRef, useMemo, useEffect } = React;
+
+/* ── 響應式 hook ── */
+function useBreakpoint() {
+  const [w, setW] = useState(() => (typeof window !== "undefined" ? window.innerWidth : 768));
+  useEffect(() => {
+    const fn = () => setW(window.innerWidth);
+    window.addEventListener("resize", fn);
+    return () => window.removeEventListener("resize", fn);
+  }, []);
+  return { isMobile: w < 600, isTablet: w >= 600 && w < 900, isDesktop: w >= 900, w };
+}
+
+/* ═══════════════════════════════════════════
+   ── 女士剪髮資料 ──
+═══════════════════════════════════════════ */
+const F_CUT_LENGTH = [
+  { id:"pixie",    zh:"超短 Pixie",  en:"pixie cut, very short hair above ears" },
+  { id:"bob",      zh:"短 Bob",      en:"bob cut, jaw-length short hair" },
+  { id:"lob",      zh:"中長 Lob",    en:"lob long bob, collarbone length hair" },
+  { id:"medium",   zh:"中長髮",      en:"medium length hair, shoulder length" },
+  { id:"long",     zh:"長髮",        en:"long hair, below shoulder length" },
+  { id:"very_long",zh:"超長髮",      en:"very long hair, waist length" },
+];
+const F_CUT_STYLE = [
+  { id:"blunt",    zh:"齊切平剪",    en:"blunt cut, straight even ends, bold clean line" },
+  { id:"layer",    zh:"層次剪",      en:"layered cut, soft layers for movement and volume" },
+  { id:"wolf",     zh:"狼尾剪",      en:"wolf cut, shaggy layers with curtain bangs" },
+  { id:"hime",     zh:"公主切",      en:"hime cut with straight front panels and blunt fringe" },
+  { id:"v_cut",    zh:"V形底部",     en:"V-cut ends, V-shaped bottom hemline" },
+  { id:"u_cut",    zh:"U形底部",     en:"U-cut ends, soft rounded U-shaped hemline" },
+  { id:"feather",  zh:"羽毛剪",      en:"feathered cut, wispy layered ends" },
+  { id:"thinning", zh:"去量打薄",    en:"thinned out, reduced bulk, lightweight texture" },
+];
+const F_CUT_BANGS = [
+  { id:"no_bangs", zh:"無瀏海",      en:"no bangs, hair swept back" },
+  { id:"full",     zh:"齊瀏海",      en:"full straight blunt bangs" },
+  { id:"see_thru", zh:"透明瀏海",    en:"see-through thin wispy bangs" },
+  { id:"curtain",  zh:"簾瀏海",      en:"curtain bangs parted in the middle" },
+  { id:"side",     zh:"側瀏海",      en:"side-swept bangs" },
+  { id:"arc",      zh:"弧形瀏海",    en:"arc-shaped round bangs" },
+];
+
+/* ═══════════════════════════════════════════
+   ── 男士剪髮資料 ──
+═══════════════════════════════════════════ */
+const M_TOP_LENGTH = [
+  { id:"buzz",        zh:"寸頭 Buzz",    en:"buzz cut, very short uniform length all over, clipper cut" },
+  { id:"short_top",   zh:"短頂",          en:"short hair on top, 1-2 inch length, cropped close" },
+  { id:"medium_top",  zh:"中頂",          en:"medium length on top, 2-4 inch, enough to style" },
+  { id:"long_top",    zh:"長頂",          en:"longer hair on top, 4-6 inch, enough to slick or flow" },
+];
+const M_FADE = [
+  { id:"no_fade",     zh:"不漸層",        en:"no fade, natural hairline, same length sides" },
+  { id:"low_fade",    zh:"低漸層 Low",    en:"low fade starting just above the ear, subtle gradual fade" },
+  { id:"mid_fade",    zh:"中漸層 Mid",    en:"mid fade starting at temple level, moderate skin fade" },
+  { id:"high_fade",   zh:"高漸層 High",   en:"high fade starting near top of head, dramatic contrast" },
+  { id:"skin_fade",   zh:"禿頭漸層 Skin", en:"skin fade, hair fades to skin at sides and back" },
+  { id:"taper",       zh:"漸消 Taper",    en:"taper fade, gradual taper at neckline and sides, natural finish" },
+  { id:"drop_fade",   zh:"弧形漸層 Drop", en:"drop fade, fade curves down behind the ear, arc shape" },
+  { id:"undercut",    zh:"內削底",        en:"undercut, disconnected undercut sides clipped short under longer top" },
+];
+const M_TOP_STYLE = [
+  { id:"textured_crop",zh:"紋理短髮",     en:"textured crop, choppy textured fringe, messy natural finish" },
+  { id:"french_crop",  zh:"法式短髮",     en:"french crop, short cropped top with short fringe, clean structured" },
+  { id:"pompadour",    zh:"飛機頭",        en:"pompadour, voluminous hair swept back and up, high lift at crown" },
+  { id:"quiff",        zh:"Quiff 鬆髮",   en:"quiff, textured volume at the front swept upward, soft modern" },
+  { id:"slick_back",   zh:"油頭後梳",      en:"slick back, hair slicked back smooth with gel or pomade" },
+  { id:"side_part",    zh:"側分",          en:"side part, clean hard part, hair combed neatly to one side" },
+  { id:"comb_over",    zh:"梳邊",          en:"comb over, volume on top combed to one side, classic barber" },
+  { id:"messy_texture",zh:"蓬鬆紋理",     en:"messy textured hair, natural tousled movement, effortless finish" },
+  { id:"faux_hawk",    zh:"假莫西干",      en:"faux hawk, center section styled upward, sides flat" },
+  { id:"crew_cut",     zh:"板寸 Crew",    en:"crew cut, short tapered sides and back, slightly longer on top" },
+  { id:"ivy_league",   zh:"長板寸",        en:"ivy league cut, longer crew cut, enough length to part and style" },
+  { id:"curtains",     zh:"中分 Curtains", en:"curtains hairstyle, center parted medium length, flowing to sides" },
+];
+const M_FRINGE = [
+  { id:"no_fringe",    zh:"無前髮",        en:"no fringe, forehead exposed" },
+  { id:"textured_fringe",zh:"紋理前髮",   en:"textured fringe, choppy uneven natural fringe" },
+  { id:"curtain_fringe",zh:"簾式前髮",    en:"curtain fringe, center parted fringe falling to sides" },
+  { id:"side_fringe",  zh:"側梳前髮",      en:"side swept fringe combed to one side" },
+  { id:"micro_fringe", zh:"短瀏海",        en:"short micro fringe, very short above eyebrows" },
+];
+const M_PERM_TYPES = [
+  { id:"air_wave_m",   zh:"空氣燙",        en:"air wave perm, soft airy natural waves, light bounce" },
+  { id:"volume_root_m",zh:"蓬鬆根部燙",    en:"volume root perm, lifted roots for extra height on top" },
+  { id:"body_wave_m",  zh:"大波浪燙",      en:"body wave perm, loose soft S-wave curls for men" },
+  { id:"relaxer",      zh:"鬆弛燙（直）",  en:"hair relaxer perm, tames frizz for smoother straighter texture" },
+  { id:"texture_perm", zh:"紋理燙",        en:"texture perm, adds subtle curl texture for styling versatility" },
+  { id:"beach_wave_m", zh:"海灘捲",        en:"beach wave perm, effortless tousled wave texture for men" },
+];
+
+/* ═══════════════════════════════════════════
+   ── 共用：燙/染 女士版 ──
+═══════════════════════════════════════════ */
+const F_PERM_TYPES = [
+  { id:"digital",     zh:"數位燙",      en:"digital perm, loose natural wavy curls with volume" },
+  { id:"cold",        zh:"冷燙",        en:"cold perm, tight defined spiral curls" },
+  { id:"body_wave",   zh:"大波浪",      en:"body wave perm, large soft S-wave curls" },
+  { id:"beach_wave",  zh:"海浪燙",      en:"beach wave perm, effortless tousled waves" },
+  { id:"straight",    zh:"離子燙直",    en:"straight perm, silky smooth straight hair, pin straight" },
+  { id:"volume_root", zh:"根部蓬鬆燙",  en:"volume root perm, lifted roots for body and height" },
+  { id:"spiral",      zh:"螺旋燙",      en:"spiral perm, tight corkscrew spiral curls" },
+  { id:"water_wave",  zh:"水波燙",      en:"water wave perm, defined S-shaped water waves" },
+  { id:"air_wave",    zh:"空氣燙",      en:"air wave perm, airy lightweight soft bouncy waves" },
+];
+const COLOR_FAMILIES = [
+  { id:"natural_black", label:"自然黑", group:"深色系", swatches:[
+    { id:"jet_black",  zh:"炭黑",    hex:"#1a1a1a", en:"jet black, pure dark black hair" },
+    { id:"soft_black", zh:"柔黑",    hex:"#2d2520", en:"soft natural black hair with subtle warmth" },
+    { id:"blue_black", zh:"藍黑",    hex:"#1a1e2e", en:"blue-black hair with cool blue sheen" },
+    { id:"brown_black",zh:"棕黑",    hex:"#2e2018", en:"dark brown-black hair" },
+  ]},
+  { id:"brown", label:"棕色系", group:"暖色系", swatches:[
+    { id:"dark_brown", zh:"深棕",    hex:"#4a2c1a", en:"deep dark brown hair" },
+    { id:"chestnut",   zh:"栗棕",    hex:"#7a3f20", en:"rich chestnut brown hair" },
+    { id:"warm_brown", zh:"暖棕",    hex:"#8b4513", en:"warm chocolate brown hair" },
+    { id:"caramel",    zh:"焦糖棕",  hex:"#c47c3a", en:"warm caramel brown hair" },
+    { id:"milk_tea",   zh:"奶茶棕",  hex:"#c8a882", en:"milk tea brown hair, beige-brown" },
+    { id:"toffee",     zh:"太妃棕",  hex:"#b07840", en:"toffee brown hair with golden warmth" },
+  ]},
+  { id:"blonde", label:"金色系", group:"暖色系", swatches:[
+    { id:"honey_blonde",zh:"蜂蜜金", hex:"#d4a055", en:"honey golden blonde hair" },
+    { id:"golden",      zh:"暖金",   hex:"#e8b84b", en:"warm golden blonde hair" },
+    { id:"champagne",   zh:"香檳金", hex:"#e8d5a0", en:"champagne blonde hair, light warm beige" },
+    { id:"platinum",    zh:"白金",   hex:"#f0e8d0", en:"platinum blonde hair, very light" },
+    { id:"butter",      zh:"奶油金", hex:"#f5dfa0", en:"buttery soft blonde hair" },
+  ]},
+  { id:"ash_cool", label:"灰霧系", group:"冷色系", swatches:[
+    { id:"ash_brown",  zh:"霧棕",    hex:"#8a7a70", en:"ash brown hair with cool grey tones" },
+    { id:"ash_blonde", zh:"霧金",    hex:"#c0b090", en:"ashy blonde hair with matte cool finish" },
+    { id:"silver",     zh:"銀灰",    hex:"#b0b0b8", en:"silver grey hair, cool metallic" },
+    { id:"steel_grey", zh:"鋼灰",    hex:"#7a8090", en:"steel grey hair, modern cool" },
+    { id:"pearl_grey", zh:"珍珠灰",  hex:"#d0ccc8", en:"pearl grey hair, soft silvery" },
+  ]},
+  { id:"red_copper", label:"紅銅系", group:"暖色系", swatches:[
+    { id:"copper",     zh:"古銅",    hex:"#b04820", en:"rich copper hair, warm reddish-brown" },
+    { id:"auburn",     zh:"赤棕",    hex:"#8b2500", en:"deep auburn red-brown hair" },
+    { id:"rose_brown", zh:"玫瑰棕",  hex:"#c47060", en:"rose brown hair, warm pinkish-brown" },
+    { id:"terra_cotta",zh:"磚紅棕",  hex:"#a05030", en:"terracotta warm red-brown hair" },
+    { id:"fire_red",   zh:"火焰紅",  hex:"#cc2200", en:"vivid fire red hair" },
+  ]},
+  { id:"fashion_pink", label:"粉紫系", group:"時尚色系", swatches:[
+    { id:"rose_pink",  zh:"玫瑰粉",  hex:"#e080a0", en:"soft rose pink hair" },
+    { id:"lilac",      zh:"淡紫",    hex:"#c090d0", en:"light lilac purple hair" },
+    { id:"lavender",   zh:"薰衣草紫",hex:"#a080c0", en:"lavender purple hair" },
+    { id:"mauve",      zh:"莓紫",    hex:"#906080", en:"mauve dusty purple hair" },
+    { id:"hot_pink",   zh:"粉紅",    hex:"#e040a0", en:"vibrant hot pink hair" },
+  ]},
+  { id:"fashion_blue", label:"藍綠系", group:"時尚色系", swatches:[
+    { id:"navy_blue",  zh:"深藍",    hex:"#203060", en:"deep navy blue hair" },
+    { id:"teal",       zh:"藍綠",    hex:"#207070", en:"teal blue-green hair" },
+    { id:"emerald",    zh:"翡翠綠",  hex:"#208050", en:"emerald green hair" },
+    { id:"ocean_blue", zh:"海洋藍",  hex:"#3060a0", en:"ocean blue hair" },
+    { id:"mint",       zh:"薄荷綠",  hex:"#60c0a0", en:"mint green hair" },
+  ]},
+];
+const COLOR_TECHNIQUES = [
+  { id:"full_color",  zh:"全染",     en:"full head solid color, uniformly dyed, even coverage roots to ends" },
+  { id:"highlights",  zh:"挑染",     en:"fine highlight streaks woven through darker base, foil highlights" },
+  { id:"balayage",    zh:"巴黎畫染", en:"balayage hand-painted from mid-shaft to ends, seamless sun-kissed gradient" },
+  { id:"ombre",       zh:"漸層染",   en:"ombre gradient, dark roots fading to lighter ends" },
+  { id:"sombre",      zh:"柔霧漸層", en:"soft sombre gradient, subtle barely noticeable color shift" },
+  { id:"root_shadow", zh:"回頭染",   en:"root shadow technique, deep dark roots blending into lighter ends" },
+  { id:"panel",       zh:"片染",     en:"chunky panel highlights, large bold color blocking sections" },
+  { id:"money_piece", zh:"框架染",   en:"money piece face framing highlights, bright sections framing the face" },
+  { id:"babylights",  zh:"嬰兒細挑", en:"babylights, extremely fine delicate highlights, natural sun-lightened" },
+  { id:"dip_dye",     zh:"霑染",     en:"dip dye tips, bottom portion dyed, sharp demarcation at mid-length" },
+  { id:"gloss",       zh:"光澤染",   en:"glossing treatment, enhanced shine with tint gloss, luminous finish" },
+  { id:"toning",      zh:"補色調色", en:"toning treatment, toner applied to neutralize brassiness" },
+];
+/* 男士染法（保留常用＋加男士特色） */
+const M_COLOR_TECHNIQUES = [
+  { id:"full_color",  zh:"全染",     en:"full head solid color, uniformly dyed, even coverage" },
+  { id:"highlights",  zh:"挑染",     en:"fine highlight streaks woven through darker base, foil highlights" },
+  { id:"bleach_tips", zh:"漂尖",     en:"bleached tips, lighter ends, sun-kissed bleached tip effect" },
+  { id:"salt_pepper", zh:"鹽胡椒混染",en:"salt and pepper blend, natural grey blended with darker base" },
+  { id:"money_piece", zh:"框架染",   en:"money piece face framing highlights, bright sections framing face" },
+  { id:"fade_tint",   zh:"漸層染色", en:"color fade blended into fade haircut, gradual tinted gradient" },
+  { id:"gloss",       zh:"光澤染",   en:"glossing treatment, enhanced shine with tint gloss, luminous finish" },
+  { id:"toning",      zh:"補色調色", en:"toning treatment, toner applied, neutralize brassiness" },
+];
+const SAT_LEVELS = [
+  { v:1, zh:"極淡", en:"very muted, barely noticeable, pastel-like" },
+  { v:2, zh:"淡雅", en:"soft muted, low saturation, natural looking" },
+  { v:3, zh:"自然", en:"natural medium saturation" },
+  { v:4, zh:"鮮明", en:"vibrant, saturated, rich color" },
+  { v:5, zh:"濃郁", en:"highly saturated, bold vivid intense color" },
+];
+const BRI_LEVELS = [
+  { v:1, zh:"極深", en:"very dark, deep shade" },
+  { v:2, zh:"深色", en:"dark tone" },
+  { v:3, zh:"中度", en:"medium brightness" },
+  { v:4, zh:"亮色", en:"light bright tone" },
+  { v:5, zh:"超亮", en:"very light, almost bleached brightness" },
+];
+const FACE_INFO = {
+  oval:    { zh:"鵝蛋臉", en:"OVAL",    color:"#c8a97e", desc:"比例均衡，幾乎適合所有髮型。" },
+  round:   { zh:"圓形臉", en:"ROUND",   color:"#a0c4b8", desc:"臉頰豐滿，適合增加高度與縱向拉長的造型。" },
+  square:  { zh:"方形臉", en:"SQUARE",  color:"#b8a0c4", desc:"下顎線明顯，柔化角度是關鍵。" },
+  heart:   { zh:"心形臉", en:"HEART",   color:"#c4a0a0", desc:"額頭寬、下巴尖，需在下半部增加視覺份量。" },
+  oblong:  { zh:"長形臉", en:"OBLONG",  color:"#a0b8c4", desc:"臉長明顯大於臉寬，適合橫向豐盈造型。" },
+  diamond: { zh:"菱形臉", en:"DIAMOND", color:"#c4bc9a", desc:"顴骨最寬，需柔化顴骨、增加上下寬度。" },
+};
+const DIFF = {
+  easy:     { label:"輕鬆完成", color:"#a0c4b8", bg:"rgba(160,196,184,0.13)" },
+  medium:   { label:"中等難度", color:"#c4bc9a", bg:"rgba(196,188,154,0.13)" },
+  advanced: { label:"進階造型", color:"#c4a0a0", bg:"rgba(196,160,160,0.13)" },
+};
+
+/* ═══════════════════════════════════════════
+   AI SCAN SYSTEM PROMPTS
+═══════════════════════════════════════════ */
+const SCAN_SYSTEM_FEMALE = `你是頂級美髮造型師和臉形分析師。分析照片，只做臉形診斷與現有髮型評估，不給改造建議。
+
+規則：只輸出純 JSON 物件。直接以 { 開頭、以 } 結尾。禁止任何 markdown（禁止反引號）、禁止任何說明文字、禁止任何前後綴。
+
+臉形名稱（faceShape 與 faceAnalysis 必須用以下英文 id 與中文名）：
+oval=鵝蛋臉, round=圓形臉, square=方形臉, heart=心形臉, oblong=長形臉, diamond=菱形臉
+
+必填欄位：faceShape（上方英文id之一）、confidence（整數60-99）、features（物件含forehead/cheekbones/jawline/faceLength）、faceAnalysis（以中文臉形名開頭2句）、currentHair（物件含length短中長/texture直波浪捲/color/style/condition健康偏乾受損）、currentAssessment（2-3句）、assessmentTags（物件含pros陣列/cons陣列各2項）`;
+
+const SCAN_SYSTEM_MALE = `你是頂級男士理髮師和臉形分析師。分析照片，只做臉形診斷與現有髮型評估，不給改造建議。
+
+規則：只輸出純 JSON 物件。直接以 { 開頭、以 } 結尾。禁止任何 markdown（禁止反引號）、禁止任何說明文字、禁止任何前後綴。
+
+臉形名稱（faceShape 與 faceAnalysis 必須用以下英文 id 與中文名）：
+oval=鵝蛋臉, round=圓形臉, square=方形臉, heart=心形臉, oblong=長形臉, diamond=菱形臉
+
+必填欄位：faceShape（上方英文id之一）、confidence（整數60-99）、features（物件含forehead/cheekbones/jawline/faceLength）、faceAnalysis（以中文臉形名開頭2句）、currentHair（物件含length短中長/texture直波浪捲/color/style/condition健康偏乾受損/fadeType現有刀法）、currentAssessment（2-3句針對男士）、assessmentTags（物件含pros陣列/cons陣列各2項）`;
+
+/* ═══════════════════════════════════════════
+   AI PLAN SYSTEM PROMPTS
+═══════════════════════════════════════════ */
+function buildPlanSystemFemale(services) {
+  const svcDesc = [];
+  if (services.cut) {
+    const parts = [services.cut.length?.zh, services.cut.style?.zh, services.cut.bangs?.zh].filter(Boolean);
+    if (parts.length) svcDesc.push(`剪髮：${parts.join("＋")}`);
+  }
+  if (services.perm) svcDesc.push(`燙髮：${services.perm.zh}`);
+  if (services.color?.tech) {
+    const c = services.color;
+    svcDesc.push(`染髮：${c.swatch?.zh || ""}（${c.tech.zh}，${BRI_LEVELS[(c.bri||3)-1].zh}/${SAT_LEVELS[(c.sat||3)-1].zh}）`);
+  }
+  return `你是頂級美髮造型師。根據臉形分析結果與用戶選擇的服務，給出3個針對性改造方案。
+用戶選擇的服務：【${svcDesc.join("；") || "未指定"}】
+每個方案必須圍繞這些服務，說明為何適合此臉形，不要推薦服務範圍外的項目。
+規則：只輸出純 JSON 物件，直接以 { 開頭、以 } 結尾，禁止任何 markdown、禁止說明文字。
+
+必填欄位：recommendations（陣列含3個物件，每個物件含title/description/difficulty(easy|medium|advanced)/timeAtSalon/mainChanges陣列/baseHairPrompt英文/baseNegative英文/maskArea/maskTips）`;
+}
+
+function buildPlanSystemMale(services) {
+  const svcDesc = [];
+  if (services.cut) {
+    const parts = [
+      services.cut.topLength?.zh,
+      services.cut.fade?.zh,
+      services.cut.topStyle?.zh,
+      services.cut.fringe?.zh,
+    ].filter(Boolean);
+    if (parts.length) svcDesc.push(`剪髮：${parts.join("＋")}`);
+  }
+  if (services.perm) svcDesc.push(`燙髮：${services.perm.zh}`);
+  if (services.color?.tech) {
+    const c = services.color;
+    svcDesc.push(`染髮：${c.swatch?.zh || ""}（${c.tech.zh}，${BRI_LEVELS[(c.bri||3)-1].zh}/${SAT_LEVELS[(c.sat||3)-1].zh}）`);
+  }
+  return `你是頂級男士理髮師。根據臉形分析結果與用戶選擇的男士剪髮服務，給出3個針對性改造方案。
+用戶選擇的服務：【${svcDesc.join("；") || "未指定"}】
+每個方案必須圍繞這些服務，說明為何適合此臉形，包含漸層刀法建議與頂部造型搭配說明。
+規則：只輸出純 JSON 物件，直接以 { 開頭、以 } 結尾，禁止任何 markdown、禁止說明文字。
+
+必填欄位：recommendations（陣列含3個物件，每個含title/description/difficulty(easy|medium|advanced)/timeAtSalon/mainChanges陣列/fadeAdvice/stylingTip/baseHairPrompt英文/baseNegative英文/maskArea/maskTips）`;
+}
+
+/* ═══════════════════════════════════════════
+   API CALLS
+═══════════════════════════════════════════ */
+function extractJSON(raw) {
+  // 1. strip markdown fences (```json ... ``` or ``` ... ```)
+  let s = raw.replace(/^```(?:json|JSON)?\s*/m, "").replace(/\s*```\s*$/m, "").trim();
+  // 2. try direct parse
+  try { return JSON.parse(s); } catch(_) {}
+  // 3. extract first { ... } block (handles leading/trailing prose)
+  const start = s.indexOf("{");
+  const end   = s.lastIndexOf("}");
+  if (start !== -1 && end !== -1 && end > start) {
+    try { return JSON.parse(s.slice(start, end + 1)); } catch(_) {}
+  }
+  // 4. extract first [ ... ] block
+  const aStart = s.indexOf("[");
+  const aEnd   = s.lastIndexOf("]");
+  if (aStart !== -1 && aEnd !== -1 && aEnd > aStart) {
+    try { return JSON.parse(s.slice(aStart, aEnd + 1)); } catch(_) {}
+  }
+  throw new Error("無法解析 AI 回應，請重試。");
+}
+
+async function callClaude(system, messages, retries = 2) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:2500, system, messages })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message);
+      const textBlock = data.content?.find(b => b.type === "text")?.text;
+      if (!textBlock) throw new Error("AI 未回傳有效內容，請重試。");
+      return extractJSON(textBlock);
+    } catch (err) {
+      if (attempt === retries) throw err;
+      await new Promise(r => setTimeout(r, 800));
+    }
+  }
+}
+
+async function scanPhoto(b64, mime, gender) {
+  const system = gender === "male" ? SCAN_SYSTEM_MALE : SCAN_SYSTEM_FEMALE;
+  return callClaude(system, [{
+    role:"user", content:[
+      { type:"image", source:{ type:"base64", media_type:mime, data:b64 } },
+      { type:"text",  text:"分析這張照片的臉形與現有髮型，回傳完整 JSON。" }
+    ]
+  }]);
+}
+
+async function generatePlans(scanResult, services, gender) {
+  const system = gender === "male" ? buildPlanSystemMale(services) : buildPlanSystemFemale(services);
+  return callClaude(system, [{
+    role:"user",
+    content: `臉形診斷結果：${JSON.stringify(scanResult)}\n請生成3個最適合的改造方案，回傳 JSON。`
+  }]);
+}
+
+/* ═══════════════════════════════════════════
+   UTILS
+═══════════════════════════════════════════ */
+function compressImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = ev => {
+      const el = document.createElement("img");
+      el.onerror = () => {
+        // 圖片元素無法解析時，回退使用原始 FileReader 結果
+        console.warn("Image element failed to load, using original file data.");
+        resolve({ dataUrl: ev.target.result, mime: file.type });
+      };
+      el.onload = () => {
+        const MAX = 1200;
+        let w = el.naturalWidth, h = el.naturalHeight;
+        if (w>MAX||h>MAX) { if(w>=h){h=Math.round(h*MAX/w);w=MAX;}else{w=Math.round(w*MAX/h);h=MAX;} }
+        const c = document.createElement("canvas");
+        c.width=w; c.height=h;
+        c.getContext("2d").drawImage(el,0,0,w,h);
+        resolve({ dataUrl:c.toDataURL("image/jpeg",0.85), mime:"image/jpeg" });
+      };
+      el.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function buildColorDesc(color, sat, bri) {
+  if (!color) return "";
+  return `${BRI_LEVELS[(bri||3)-1].en} ${SAT_LEVELS[(sat||3)-1].en} ${color.en}`.replace(/\s+/g," ").trim();
+}
+
+function buildFinalPrompt(rec, services, scanResult, gender) {
+  if (!rec) return { positive:"", negative:"" };
+  const parts = [];
+  const isMale = gender === "male";
+  const subject = isMale ? "photorealistic portrait of asian man" : "photorealistic portrait of asian woman";
+
+  const cut = services.cut;
+  const hasCut = cut && Object.values(cut).some(Boolean);
+
+  if (hasCut) {
+    if (isMale) {
+      const cutDesc = [cut.topLength?.en, cut.fade?.en, cut.topStyle?.en, cut.fringe?.en].filter(Boolean).join(", ");
+      parts.push(cutDesc);
+    } else {
+      const cutDesc = [cut.length?.en, cut.style?.en, cut.bangs?.en].filter(Boolean).join(", ");
+      parts.push(cutDesc);
+    }
+  } else {
+    const ch = scanResult?.currentHair;
+    if (ch) {
+      const lengthMap = { "短":"short hair","中":"medium length hair","長":"long hair" };
+      const textureMap = { "直":"straight","波浪":"wavy","捲":"curly" };
+      const origLen = Object.entries(lengthMap).find(([k])=>ch.length?.includes(k))?.[1] || "same length as original";
+      const origTex = Object.entries(textureMap).find(([k])=>ch.texture?.includes(k))?.[1] || "";
+      parts.push([origLen, origTex && origTex+" hair texture", "same hair volume as original"].filter(Boolean).join(", "));
+    } else {
+      parts.push("same hair length as original, do not change hairstyle structure");
+    }
+  }
+
+  if (services.perm?.en) parts.push(services.perm.en);
+
+  const col = services.color;
+  const onlyColor = !hasCut && !services.perm && col?.tech && col?.swatch;
+  if (col?.tech && col?.swatch) {
+    const cd = buildColorDesc(col.swatch, col.sat, col.bri);
+    const colorBase = `${col.tech.en}, ${cd}`;
+    const recHint = (rec.baseHairPrompt || "")
+      .replace(/long hair|medium (length )?hair|short hair|wavy|straight|curly|layered cut|wolf cut|bob|lob|same[^,\n]*original/gi, "")
+      .replace(/\s*,\s*/g, ", ").replace(/^[\s,]+|[\s,]+$/g, "").trim();
+    parts.push([colorBase, recHint].filter(s => s.length > 2).join(", "));
+  }
+
+  const planStyleMap = [
+    "subtle natural tonal shift, soft depth, understated elegance",
+    "defined dimensional color, rich contrast, salon-polished finish",
+    "bold luminous color, high-brightness editorial look, striking visual impact",
+  ];
+  parts.push(planStyleMap[rec._planIndex ?? 0] || planStyleMap[0]);
+
+  const colorOnlyNote = onlyColor ? ", ONLY change hair color, do NOT alter hair length, volume, or structure" : "";
+  const baseNeg = rec.baseNegative || (isMale
+    ? "ugly, blurry, distorted face, bad anatomy, watermark, feminine, long hair"
+    : "ugly, blurry, distorted face, bad anatomy, watermark");
+  const negExtra = onlyColor ? ", different hairstyle, hair length change" : "";
+
+  return {
+    positive: `${subject}, natural studio lighting, professional barbershop result, ${parts.join(", ")}, healthy hair, preserve facial features${colorOnlyNote}, 8k detail`,
+    negative: baseNeg + negExtra,
+  };
+}
+
+function buildSummaryTags(services, gender) {
+  const tags = [];
+  const cut = services.cut;
+  if (gender === "male") {
+    if (cut?.topLength)  tags.push({ label:cut.topLength.zh,  cat:"cut" });
+    if (cut?.fade)       tags.push({ label:cut.fade.zh,       cat:"cut" });
+    if (cut?.topStyle)   tags.push({ label:cut.topStyle.zh,   cat:"cut" });
+    if (cut?.fringe && cut.fringe.id !== "no_fringe") tags.push({ label:cut.fringe.zh, cat:"cut" });
+  } else {
+    if (cut?.length)     tags.push({ label:cut.length.zh,     cat:"cut" });
+    if (cut?.style)      tags.push({ label:cut.style.zh,      cat:"cut" });
+    if (cut?.bangs && cut.bangs.id !== "no_bangs") tags.push({ label:cut.bangs.zh, cat:"cut" });
+  }
+  if (services.perm) tags.push({ label:services.perm.zh, cat:"perm" });
+  const col = services.color;
+  if (col?.tech && col?.swatch) tags.push({ label:`${col.swatch.zh}・${col.tech.zh}`, cat:"color", hex:col.swatch.hex });
+  return tags;
+}
+
+/* ═══════════════════════════════════════════
+   UI — CopyBtn
+═══════════════════════════════════════════ */
+function CopyBtn({ text, label, block }) {
+  const [ok, setOk] = useState(false);
+  const s = {
+    padding: block ? ".65rem" : ".38rem .9rem",
+    border: "1px solid rgba(200,169,126,.34)",
+    background: ok ? "rgba(160,196,184,.15)" : "rgba(200,169,126,.08)",
+    color: ok ? "#a0c4b8" : "#c8a97e",
+    borderRadius:"4px", cursor:"pointer",
+    fontSize: block ? ".78rem" : ".7rem",
+    fontFamily:"monospace", width: block ? "100%" : "auto",
+    transition:"all .2s", display: block ? "block" : "inline-block",
+    textAlign:"center", letterSpacing:".04em",
+    WebkitTapHighlightColor:"transparent", touchAction:"manipulation",
+  };
+  return (
+    <button style={s} onClick={()=>{ navigator.clipboard.writeText(text).catch(()=>{}); setOk(true); setTimeout(()=>setOk(false),2000); }}>
+      {ok ? "✓ 已複製" : label}
+    </button>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   UI — Color sub-picker (shared)
+═══════════════════════════════════════════ */
+function ColorPicker({ services, setServices, isMobile, colorTechs }) {
+  const [openFamily, setOpenFamily] = useState(null);
+  const gridStyle = { display:"flex", flexWrap:"wrap", gap:".36rem", marginBottom:".6rem" };
+  const btnStyle = (active) => ({
+    padding: isMobile ? ".32rem .6rem" : ".28rem .65rem",
+    border: `1px solid ${active?"#c8a97e":"rgba(255,255,255,.09)"}`,
+    background: active ? "rgba(200,169,126,.12)" : "rgba(255,255,255,.02)",
+    color: active ? "#e8ddd0" : "#7a6a5a", borderRadius:"4px", cursor:"pointer",
+    fontSize: isMobile ? ".76rem" : ".72rem", transition:"all .17s",
+    WebkitTapHighlightColor:"transparent", touchAction:"manipulation",
+  });
+
+  return (
+    <>
+      <div style={{ fontSize:".56rem", letterSpacing:".2em", color:"#6a5a4a", textTransform:"uppercase", marginBottom:".4rem" }}>染法</div>
+      <div style={gridStyle}>
+        {colorTechs.map(o=>(
+          <button key={o.id} style={btnStyle(services.color?.tech?.id===o.id)}
+            onClick={()=>setServices(p=>({...p,color:{...(p.color||{sat:3,bri:3}),tech:p.color?.tech?.id===o.id?null:o}}))}>
+            {o.zh}
+          </button>
+        ))}
+      </div>
+
+      {services.color?.tech && (
+        <>
+          <div style={{ fontSize:".56rem", letterSpacing:".2em", color:"#6a5a4a", textTransform:"uppercase", margin:".6rem 0 .38rem" }}>色系</div>
+          {[...new Set(COLOR_FAMILIES.map(f=>f.group))].map(g=>(
+            <div key={g} style={{ marginBottom:".5rem" }}>
+              <div style={{ fontSize:".54rem", letterSpacing:".14em", color:"#5a4a3a", textTransform:"uppercase", marginBottom:".28rem" }}>{g}</div>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:".32rem", marginBottom:".28rem" }}>
+                {COLOR_FAMILIES.filter(f=>f.group===g).map(fam=>(
+                  <button key={fam.id}
+                    onClick={()=>setOpenFamily(openFamily===fam.id?null:fam.id)}
+                    style={{
+                      display:"flex", alignItems:"center", gap:".38rem",
+                      padding: isMobile ? ".3rem .6rem" : ".26rem .6rem",
+                      border:`1px solid ${openFamily===fam.id?"rgba(200,169,126,.4)":"rgba(255,255,255,.09)"}`,
+                      background: openFamily===fam.id?"rgba(200,169,126,.06)":"rgba(255,255,255,.02)",
+                      borderRadius:"4px", cursor:"pointer", fontSize: isMobile ? ".72rem" : ".66rem",
+                      color: openFamily===fam.id?"#c8a97e":"#7a6a5a", transition:"all .17s",
+                      WebkitTapHighlightColor:"transparent", touchAction:"manipulation",
+                    }}>
+                    <div style={{ display:"flex", gap:"2px" }}>
+                      {fam.swatches.slice(0,3).map(s=><span key={s.id} style={{ width:"7px", height:"7px", borderRadius:"50%", background:s.hex, border:"1px solid rgba(255,255,255,.1)" }}/>)}
+                    </div>
+                    <span>{fam.label}</span>
+                  </button>
+                ))}
+              </div>
+              {COLOR_FAMILIES.filter(f=>f.group===g&&f.id===openFamily).map(fam=>(
+                <div key={fam.id} style={{ display:"flex", flexWrap:"wrap", gap:".4rem", padding:".55rem", background:"rgba(0,0,0,.2)", borderRadius:"6px", border:"1px solid rgba(255,255,255,.06)", marginBottom:".4rem" }}>
+                  {fam.swatches.map(s=>{
+                    const active = services.color?.swatch?.id===s.id;
+                    return (
+                      <button key={s.id}
+                        onClick={()=>setServices(p=>({...p,color:{...(p.color||{}),swatch:s}}))}
+                        style={{
+                          display:"flex", flexDirection:"column", alignItems:"center", gap:".22rem",
+                          padding: isMobile ? ".3rem .45rem" : ".24rem .38rem", minWidth:isMobile?"52px":"48px",
+                          border:`1px solid ${active?s.hex:"rgba(255,255,255,.08)"}`,
+                          background: active?"rgba(255,255,255,.06)":"rgba(255,255,255,.02)",
+                          borderRadius:"6px", cursor:"pointer", transition:"all .17s",
+                          WebkitTapHighlightColor:"transparent", touchAction:"manipulation",
+                        }}>
+                        <span style={{ width:isMobile?"20px":"17px", height:isMobile?"20px":"17px", borderRadius:"50%", background:s.hex, border:"2px solid rgba(255,255,255,.15)", display:"block" }}/>
+                        <span style={{ fontSize:".56rem", color:active?"#e8ddd0":"#a09080", whiteSpace:"nowrap" }}>{s.zh}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          ))}
+
+          {services.color?.swatch && (
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:".75rem", marginTop:".4rem" }}>
+              {[["彩度",SAT_LEVELS,"sat",services.color?.sat||3,services.color.swatch.hex,true],["明度",BRI_LEVELS,"bri",services.color?.bri||3,services.color.swatch.hex,false]].map(([label,levels,key,cur,hex,isSat])=>(
+                <div key={key}>
+                  <div style={{ display:"flex", justifyContent:"space-between", fontSize:".58rem", color:"#7a6a5a", marginBottom:".38rem" }}>
+                    <span>{label}</span>
+                    <span style={{ color:"#c8a97e" }}>{levels[cur-1].zh}</span>
+                  </div>
+                  <div style={{ display:"flex", gap:".22rem" }}>
+                    {levels.map((l,i)=>(
+                      <button key={l.v}
+                        onClick={()=>setServices(p=>({...p,color:{...p.color,[key]:l.v}}))}
+                        style={{
+                          flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:".2rem",
+                          padding: isMobile ? ".3rem .08rem" : ".24rem .08rem",
+                          border:`1px solid ${cur===l.v?"rgba(200,169,126,.5)":"rgba(255,255,255,.07)"}`,
+                          background: cur===l.v?"rgba(200,169,126,.08)":"rgba(255,255,255,.02)",
+                          borderRadius:"4px", cursor:"pointer", transition:"all .17s",
+                          WebkitTapHighlightColor:"transparent", touchAction:"manipulation",
+                        }}>
+                        <span style={{
+                          width:isMobile?"13px":"11px", height:isMobile?"13px":"11px",
+                          borderRadius:"50%", display:"block", border:"1px solid rgba(255,255,255,.15)",
+                          background: isSat
+                            ? `rgba(${parseInt(hex.slice(1,3),16)},${parseInt(hex.slice(3,5),16)},${parseInt(hex.slice(5,7),16)},${0.2+i*0.2})`
+                            : `color-mix(in srgb,${hex} ${100-i*20}%,white)`
+                        }}/>
+                        <span style={{ fontSize:".5rem", color:cur===l.v?"#c8a97e":"#6a5a4a", whiteSpace:"nowrap" }}>{l.zh}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+      <button onClick={()=>setServices(p=>({...p,color:null}))} style={{ background:"none", border:"none", fontSize:".6rem", color:"#4a3a2a", cursor:"pointer", textDecoration:"underline", marginTop:".5rem", padding:".2rem 0" }}>清除染髮選擇</button>
+    </>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   UI — ServicePicker (Female)
+═══════════════════════════════════════════ */
+function FemaleServicePicker({ services, setServices, isMobile }) {
+  const [activeTab, setActiveTab] = useState(null);
+  const setCut = (key, val) =>
+    setServices(prev => ({ ...prev, cut: { ...(prev.cut||{}), [key]: prev.cut?.[key]?.id===val.id ? null : val } }));
+  const hasCut   = services.cut && Object.values(services.cut).some(Boolean);
+  const hasPerm  = !!services.perm;
+  const hasColor = !!(services.color?.tech && services.color?.swatch);
+  const svcBtns = [
+    { id:"cut",   label:"✂ 剪髮", active:hasCut,   color:"#a0c4b8" },
+    { id:"perm",  label:"〰 燙髮", active:hasPerm,  color:"#c4bc9a" },
+    { id:"color", label:"🎨 染髮", active:hasColor, color:"#c8a97e" },
+  ];
+  const detailStyle = { padding: isMobile ? ".8rem" : ".8rem 1.2rem 1rem", borderTop:"1px solid rgba(255,255,255,.06)", background:"rgba(0,0,0,.15)" };
+  const gridStyle = { display:"flex", flexWrap:"wrap", gap:".36rem", marginBottom:".6rem" };
+  const btnStyle = (active) => ({
+    padding: isMobile ? ".32rem .6rem" : ".28rem .65rem",
+    border: `1px solid ${active?"#c8a97e":"rgba(255,255,255,.09)"}`,
+    background: active ? "rgba(200,169,126,.12)" : "rgba(255,255,255,.02)",
+    color: active ? "#e8ddd0" : "#7a6a5a", borderRadius:"4px", cursor:"pointer",
+    fontSize: isMobile ? ".78rem" : ".72rem", transition:"all .17s",
+    WebkitTapHighlightColor:"transparent", touchAction:"manipulation",
+  });
+
+  return (
+    <div style={{ background:"rgba(200,169,126,.03)", border:"1px solid rgba(200,169,126,.15)", borderRadius:"8px", overflow:"hidden" }}>
+      <div style={{ padding: isMobile ? ".85rem" : "1rem 1.2rem .8rem", borderBottom:"1px solid rgba(200,169,126,.1)" }}>
+        <div style={{ fontSize: isMobile ? ".9rem" : ".95rem", color:"#c8a97e", fontWeight:600 }}>請選擇今天想做的服務</div>
+        <div style={{ fontSize:".62rem", color:"#6a5a4a", marginTop:".18rem" }}>可多選 · 選完後 AI 針對性出方案</div>
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:".5rem", padding: isMobile ? ".8rem" : ".9rem 1.2rem" }}>
+        {svcBtns.map(b => (
+          <button key={b.id} onClick={() => setActiveTab(t => t===b.id?null:b.id)}
+            style={{
+              display:"flex", alignItems:"center", justifyContent:"center", gap:".4rem",
+              padding: isMobile ? ".6rem .3rem" : ".5rem 1.1rem",
+              border: `1px solid ${activeTab===b.id||b.active ? b.color : "rgba(255,255,255,.1)"}`,
+              background: activeTab===b.id ? "rgba(255,255,255,.05)" : "rgba(255,255,255,.02)",
+              borderRadius:"6px", cursor:"pointer", fontSize: isMobile ? ".78rem" : ".82rem",
+              color: activeTab===b.id||b.active ? b.color : "#6a5a4a", transition:"all .2s",
+              WebkitTapHighlightColor:"transparent", touchAction:"manipulation",
+            }}>
+            <span>{b.label}</span>
+            {b.active && <span style={{ width:"6px", height:"6px", borderRadius:"50%", background:b.color, flexShrink:0 }}/>}
+          </button>
+        ))}
+      </div>
+      {activeTab==="cut" && (
+        <div style={detailStyle}>
+          {[["長度",F_CUT_LENGTH,"length"],["剪法",F_CUT_STYLE,"style"],["瀏海",F_CUT_BANGS,"bangs"]].map(([label,opts,key])=>(
+            <div key={key} style={{ marginBottom:".75rem" }}>
+              <div style={{ fontSize:".56rem", letterSpacing:".2em", color:"#6a5a4a", textTransform:"uppercase", marginBottom:".4rem" }}>{label}</div>
+              <div style={gridStyle}>{opts.map(o=><button key={o.id} style={btnStyle(services.cut?.[key]?.id===o.id)} onClick={()=>setCut(key,o)}>{o.zh}</button>)}</div>
+            </div>
+          ))}
+          <button onClick={()=>setServices(p=>({...p,cut:null}))} style={{ background:"none", border:"none", fontSize:".6rem", color:"#4a3a2a", cursor:"pointer", textDecoration:"underline", padding:".2rem 0" }}>清除剪髮選擇</button>
+        </div>
+      )}
+      {activeTab==="perm" && (
+        <div style={detailStyle}>
+          <div style={{ fontSize:".56rem", letterSpacing:".2em", color:"#6a5a4a", textTransform:"uppercase", marginBottom:".4rem" }}>燙法</div>
+          <div style={gridStyle}>{F_PERM_TYPES.map(o=><button key={o.id} style={btnStyle(services.perm?.id===o.id)} onClick={()=>setServices(p=>({...p,perm:p.perm?.id===o.id?null:o}))}>{o.zh}</button>)}</div>
+          <button onClick={()=>setServices(p=>({...p,perm:null}))} style={{ background:"none", border:"none", fontSize:".6rem", color:"#4a3a2a", cursor:"pointer", textDecoration:"underline", padding:".2rem 0" }}>清除燙髮選擇</button>
+        </div>
+      )}
+      {activeTab==="color" && (
+        <div style={detailStyle}>
+          <ColorPicker services={services} setServices={setServices} isMobile={isMobile} colorTechs={COLOR_TECHNIQUES}/>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   UI — ServicePicker (Male)
+═══════════════════════════════════════════ */
+function MaleServicePicker({ services, setServices, isMobile }) {
+  const [activeTab, setActiveTab] = useState(null);
+  const setCut = (key, val) =>
+    setServices(prev => ({ ...prev, cut: { ...(prev.cut||{}), [key]: prev.cut?.[key]?.id===val.id ? null : val } }));
+  const hasCut   = services.cut && Object.values(services.cut).some(Boolean);
+  const hasPerm  = !!services.perm;
+  const hasColor = !!(services.color?.tech && services.color?.swatch);
+  const svcBtns = [
+    { id:"cut",   label:"✂ 剪髮", active:hasCut,   color:"#a0c4b8" },
+    { id:"perm",  label:"〰 燙髮", active:hasPerm,  color:"#c4bc9a" },
+    { id:"color", label:"🎨 染髮", active:hasColor, color:"#c8a97e" },
+  ];
+  const detailStyle = { padding: isMobile ? ".8rem" : ".8rem 1.2rem 1rem", borderTop:"1px solid rgba(255,255,255,.06)", background:"rgba(0,0,0,.15)" };
+  const gridStyle = { display:"flex", flexWrap:"wrap", gap:".36rem", marginBottom:".6rem" };
+  const btnStyle = (active, accent="#c8a97e") => ({
+    padding: isMobile ? ".32rem .6rem" : ".28rem .65rem",
+    border: `1px solid ${active?accent:"rgba(255,255,255,.09)"}`,
+    background: active ? `rgba(${active?"200,169,126":"255,255,255"},.12)` : "rgba(255,255,255,.02)",
+    color: active ? "#e8ddd0" : "#7a6a5a", borderRadius:"4px", cursor:"pointer",
+    fontSize: isMobile ? ".78rem" : ".72rem", transition:"all .17s",
+    WebkitTapHighlightColor:"transparent", touchAction:"manipulation",
+  });
+
+  /* 男士剪髮刀法顏色映射 */
+  const fadeAccents = {
+    no_fade:"#6a7a8a", low_fade:"#7a9aaa", mid_fade:"#5a8aa0",
+    high_fade:"#3a7090", skin_fade:"#1a5070", taper:"#8aaa9a",
+    drop_fade:"#6a90a0", undercut:"#9a6a8a",
+  };
+
+  return (
+    <div style={{ background:"rgba(160,196,184,.03)", border:"1px solid rgba(160,196,184,.15)", borderRadius:"8px", overflow:"hidden" }}>
+      <div style={{ padding: isMobile ? ".85rem" : "1rem 1.2rem .8rem", borderBottom:"1px solid rgba(160,196,184,.1)" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:".5rem" }}>
+          <span style={{ fontSize:".9rem" }}>✂</span>
+          <div>
+            <div style={{ fontSize: isMobile ? ".9rem" : ".95rem", color:"#a0c4b8", fontWeight:600 }}>男士剪髮服務選擇</div>
+            <div style={{ fontSize:".62rem", color:"#5a6a5a", marginTop:".1rem" }}>可多選 · AI 給出刀法＋造型針對性建議</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:".5rem", padding: isMobile ? ".8rem" : ".9rem 1.2rem" }}>
+        {svcBtns.map(b => (
+          <button key={b.id} onClick={() => setActiveTab(t => t===b.id?null:b.id)}
+            style={{
+              display:"flex", alignItems:"center", justifyContent:"center", gap:".4rem",
+              padding: isMobile ? ".6rem .3rem" : ".5rem 1.1rem",
+              border: `1px solid ${activeTab===b.id||b.active ? b.color : "rgba(255,255,255,.1)"}`,
+              background: activeTab===b.id ? "rgba(255,255,255,.05)" : "rgba(255,255,255,.02)",
+              borderRadius:"6px", cursor:"pointer", fontSize: isMobile ? ".78rem" : ".82rem",
+              color: activeTab===b.id||b.active ? b.color : "#6a5a4a", transition:"all .2s",
+              WebkitTapHighlightColor:"transparent", touchAction:"manipulation",
+            }}>
+            <span>{b.label}</span>
+            {b.active && <span style={{ width:"6px", height:"6px", borderRadius:"50%", background:b.color, flexShrink:0 }}/>}
+          </button>
+        ))}
+      </div>
+
+      {activeTab==="cut" && (
+        <div style={detailStyle}>
+          {/* 頂部長度 */}
+          <div style={{ marginBottom:".75rem" }}>
+            <div style={{ fontSize:".56rem", letterSpacing:".2em", color:"#5a6a5a", textTransform:"uppercase", marginBottom:".4rem" }}>頂部長度</div>
+            <div style={gridStyle}>{M_TOP_LENGTH.map(o=><button key={o.id} style={btnStyle(services.cut?.topLength?.id===o.id,"#a0c4b8")} onClick={()=>setCut("topLength",o)}>{o.zh}</button>)}</div>
+          </div>
+
+          {/* 漸層刀法 — 特色視覺 */}
+          <div style={{ marginBottom:".75rem" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:".4rem", marginBottom:".4rem" }}>
+              <div style={{ fontSize:".56rem", letterSpacing:".2em", color:"#5a6a5a", textTransform:"uppercase" }}>漸層刀法 FADE</div>
+              {services.cut?.fade && <span style={{ fontSize:".54rem", color:"#a0c4b8", background:"rgba(160,196,184,.1)", border:"1px solid rgba(160,196,184,.2)", borderRadius:20, padding:".08rem .4rem" }}>已選：{services.cut.fade.zh}</span>}
+            </div>
+            {/* Fade visual selector */}
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:".36rem" }}>
+              {M_FADE.map(o=>{
+                const active = services.cut?.fade?.id===o.id;
+                const accent = fadeAccents[o.id] || "#7a8a9a";
+                return (
+                  <button key={o.id}
+                    onClick={()=>setCut("fade",o)}
+                    style={{
+                      display:"flex", flexDirection:"column", alignItems:"center", gap:".28rem",
+                      padding:".4rem .2rem",
+                      border:`1px solid ${active?accent:"rgba(255,255,255,.09)"}`,
+                      background: active?`rgba(${parseInt(accent.slice(1,3),16)},${parseInt(accent.slice(3,5),16)},${parseInt(accent.slice(5,7),16)},.1)`:"rgba(255,255,255,.02)",
+                      borderRadius:"6px", cursor:"pointer", transition:"all .17s",
+                      WebkitTapHighlightColor:"transparent", touchAction:"manipulation",
+                    }}>
+                    {/* Mini fade visualizer */}
+                    <div style={{ width:"28px", height:"22px", position:"relative", overflow:"hidden", borderRadius:"3px", background:"rgba(0,0,0,.3)" }}>
+                      {o.id === "no_fade" && (
+                        <div style={{ position:"absolute", inset:0, background:`linear-gradient(to bottom, ${accent}88, ${accent}88)`, borderRadius:"3px" }}/>
+                      )}
+                      {o.id === "skin_fade" && (
+                        <div style={{ position:"absolute", inset:0, background:`linear-gradient(to top, transparent 0%, ${accent}44 40%, ${accent}aa 100%)` }}/>
+                      )}
+                      {o.id === "low_fade" && (
+                        <div style={{ position:"absolute", inset:0 }}>
+                          <div style={{ position:"absolute", top:0, left:0, right:0, height:"60%", background:`${accent}99` }}/>
+                          <div style={{ position:"absolute", bottom:0, left:0, right:0, height:"40%", background:`linear-gradient(to bottom,${accent}99,transparent)` }}/>
+                        </div>
+                      )}
+                      {o.id === "mid_fade" && (
+                        <div style={{ position:"absolute", inset:0 }}>
+                          <div style={{ position:"absolute", top:0, left:0, right:0, height:"40%", background:`${accent}aa` }}/>
+                          <div style={{ position:"absolute", top:"40%", left:0, right:0, height:"35%", background:`linear-gradient(to bottom,${accent}aa,${accent}22)` }}/>
+                        </div>
+                      )}
+                      {o.id === "high_fade" && (
+                        <div style={{ position:"absolute", inset:0 }}>
+                          <div style={{ position:"absolute", top:0, left:0, right:0, height:"22%", background:`${accent}cc` }}/>
+                          <div style={{ position:"absolute", top:"22%", left:0, right:0, height:"40%", background:`linear-gradient(to bottom,${accent}cc,${accent}11)` }}/>
+                        </div>
+                      )}
+                      {o.id === "taper" && (
+                        <div style={{ position:"absolute", inset:0, background:`linear-gradient(to top, transparent 0%,${accent}55 30%,${accent}99 100%)` }}/>
+                      )}
+                      {o.id === "drop_fade" && (
+                        <div style={{ position:"absolute", inset:0 }}>
+                          <div style={{ position:"absolute", top:0, left:0, right:0, height:"50%", background:`${accent}99` }}/>
+                          <div style={{ position:"absolute", top:"30%", left:0, right:0, height:"70%", background:`radial-gradient(ellipse at 50% 0%, ${accent}88 0%, transparent 70%)` }}/>
+                        </div>
+                      )}
+                      {o.id === "undercut" && (
+                        <div style={{ position:"absolute", inset:0 }}>
+                          <div style={{ position:"absolute", top:0, left:0, right:0, height:"35%", background:`${accent}cc` }}/>
+                          <div style={{ position:"absolute", top:"35%", left:0, right:0, height:"65%", background:`${accent}22` }}/>
+                          <div style={{ position:"absolute", top:"34%", left:0, right:0, height:"2px", background:`${accent}` }}/>
+                        </div>
+                      )}
+                    </div>
+                    <span style={{ fontSize:".54rem", color:active?"#e8ddd0":"#7a8a7a", textAlign:"center", lineHeight:1.2, whiteSpace:"nowrap" }}>{o.zh}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 頂部造型 */}
+          <div style={{ marginBottom:".75rem" }}>
+            <div style={{ fontSize:".56rem", letterSpacing:".2em", color:"#5a6a5a", textTransform:"uppercase", marginBottom:".4rem" }}>頂部造型</div>
+            <div style={gridStyle}>{M_TOP_STYLE.map(o=><button key={o.id} style={btnStyle(services.cut?.topStyle?.id===o.id,"#a0c4b8")} onClick={()=>setCut("topStyle",o)}>{o.zh}</button>)}</div>
+          </div>
+
+          {/* 前髮 */}
+          <div style={{ marginBottom:".75rem" }}>
+            <div style={{ fontSize:".56rem", letterSpacing:".2em", color:"#5a6a5a", textTransform:"uppercase", marginBottom:".4rem" }}>前髮</div>
+            <div style={gridStyle}>{M_FRINGE.map(o=><button key={o.id} style={btnStyle(services.cut?.fringe?.id===o.id,"#a0c4b8")} onClick={()=>setCut("fringe",o)}>{o.zh}</button>)}</div>
+          </div>
+
+          <button onClick={()=>setServices(p=>({...p,cut:null}))} style={{ background:"none", border:"none", fontSize:".6rem", color:"#4a5a4a", cursor:"pointer", textDecoration:"underline", padding:".2rem 0" }}>清除剪髮選擇</button>
+        </div>
+      )}
+
+      {activeTab==="perm" && (
+        <div style={detailStyle}>
+          <div style={{ fontSize:".56rem", letterSpacing:".2em", color:"#5a6a5a", textTransform:"uppercase", marginBottom:".4rem" }}>男士燙髮</div>
+          <div style={gridStyle}>{M_PERM_TYPES.map(o=><button key={o.id} style={btnStyle(services.perm?.id===o.id,"#c4bc9a")} onClick={()=>setServices(p=>({...p,perm:p.perm?.id===o.id?null:o}))}>{o.zh}</button>)}</div>
+          <button onClick={()=>setServices(p=>({...p,perm:null}))} style={{ background:"none", border:"none", fontSize:".6rem", color:"#4a5a4a", cursor:"pointer", textDecoration:"underline", padding:".2rem 0" }}>清除燙髮選擇</button>
+        </div>
+      )}
+
+      {activeTab==="color" && (
+        <div style={detailStyle}>
+          <ColorPicker services={services} setServices={setServices} isMobile={isMobile} colorTechs={M_COLOR_TECHNIQUES}/>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── 字型注入（只執行一次）── */
+function useFontLoader() {
+  useEffect(() => {
+    if (document.getElementById("hair-oracle-fonts")) return;
+    const link = document.createElement("link");
+    link.id = "hair-oracle-fonts";
+    link.rel = "stylesheet";
+    link.href = "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=DM+Mono&family=DM+Sans:wght@300;400;500&display=swap";
+    document.head.appendChild(link);
+  }, []);
+}
+
+
+function HairOracle() {
+  useFontLoader();
+  const { isMobile, isTablet } = useBreakpoint();
+  const [gender, setGender]     = useState(null); // null = not chosen yet
+  const [step, setStep]         = useState("upload");
+  const [preview, setPreview]   = useState(null);
+  const [imgData, setImgData]   = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [error, setError]       = useState("");
+  const [scanResult, setScanResult] = useState(null);
+  const [planResult, setPlanResult] = useState(null);
+  const [activeRec, setActiveRec]   = useState(0);
+  const [statusMsg, setStatusMsg]   = useState("");
+  const [services, setServices] = useState({ cut:null, perm:null, color:null });
+  const fileRef   = useRef();
+  const cameraRef = useRef();
+
+  const px = isMobile ? "1rem" : "1.4rem";
+  const isMale = gender === "male";
+  /* accent colors by gender */
+  const ACC  = isMale ? "#a0c4b8" : "#c8a97e";
+  const ACC2 = isMale ? "rgba(160,196,184," : "rgba(200,169,126,";
+
+  const pickFile = async f => {
+    if (!f?.type.startsWith("image/")) return;
+    setError("");
+    try {
+      const { dataUrl, mime } = await compressImage(f);
+      setPreview(dataUrl); setImgData({ b64:dataUrl.split(",")[1], mime });
+    } catch { setError("圖片讀取失敗，請重試。"); }
+  };
+
+  const doScan = async () => {
+    if (!imgData) return;
+    setStep("scanning"); setError("");
+    setStatusMsg("辨識臉形與現有髮型特徵…");
+    try {
+      const res = await scanPhoto(imgData.b64, imgData.mime, gender);
+      res.info = FACE_INFO[res.faceShape] || FACE_INFO.oval;
+      setScanResult(res);
+      setStep("pick_service");
+    } catch(e) { setError("分析失敗：" + e.message); setStep("upload"); setStatusMsg(""); }
+  };
+
+  const doGeneratePlans = async () => {
+    const hasSvc = services.cut || services.perm || services.color;
+    if (!hasSvc) { setError("請至少選擇一項服務"); return; }    setError(""); setStep("generating");
+    setStatusMsg("根據您的選擇生成針對性改造方案…");
+    try {
+      const res = await generatePlans(scanResult, services, gender);
+      setPlanResult(res); setActiveRec(0); setStep("result");
+    } catch(e) { setError("方案生成失敗：" + e.message); setStep("pick_service"); setStatusMsg(""); }
+  };
+
+  const reset = () => {
+    setStep("upload"); setPreview(null); setImgData(null);
+    setScanResult(null); setPlanResult(null); setError("");
+    setServices({ cut:null, perm:null, color:null });
+  };
+  const rePickService = () => {
+    setPlanResult(null); setError(""); setActiveRec(0);
+    setServices({ cut:null, perm:null, color:null });
+    setStep("pick_service");
+  };
+
+  const hasSvc = !!(services.cut || services.perm || services.color);
+
+  const rec  = planResult?.recommendations?.[activeRec];
+  const diff = rec ? (DIFF[rec.difficulty]||DIFF.easy) : null;
+  const finalPrompts = useMemo(()=> buildFinalPrompt(rec ? {...rec, _planIndex:activeRec} : rec, services, scanResult, gender), [rec, activeRec, services, scanResult, gender]);
+  const summaryTags  = useMemo(()=> buildSummaryTags(services, gender), [services, gender]);
+
+  const fullCopyText = rec ? `=== 方案 ${activeRec+1}：${rec.title} ===
+難度：${diff?.label}  |  時間：${rec.timeAtSalon}
+造型：${summaryTags.map(t=>t.label).join(" · ")}
+${isMale && rec.fadeAdvice ? `\n【刀法建議】\n${rec.fadeAdvice}` : ""}
+${isMale && rec.stylingTip ? `\n【打理技巧】\n${rec.stylingTip}` : ""}
+
+【Positive Prompt】
+${finalPrompts.positive}
+
+【Negative Prompt】
+${finalPrompts.negative}
+
+
+【遮罩】${rec.maskArea}
+${rec.maskTips}` : "";
+
+  const tagStyle = cat => ({
+    display:"inline-flex", alignItems:"center", gap:".28rem",
+    padding: isMobile ? ".2rem .6rem" : ".16rem .55rem", borderRadius:"20px",
+    fontSize: isMobile ? ".72rem" : ".66rem",
+    background: cat==="cut"?"rgba(160,196,184,.1)":cat==="perm"?"rgba(196,188,154,.1)":"rgba(200,169,126,.1)",
+    border: `1px solid ${cat==="cut"?"rgba(160,196,184,.22)":cat==="perm"?"rgba(196,188,154,.22)":"rgba(200,169,126,.24)"}`,
+    color: cat==="cut"?"#a0c4b8":cat==="perm"?"#c4bc9a":"#c8a97e"
+  });
+
+  const stepLabels = [
+    { id:"upload",       label:"上傳" },
+    { id:"pick_service", label:"服務" },
+    { id:"result",       label:"方案" },
+  ];
+  const order = ["upload","scanning","pick_service","generating","result"];
+  const curIdx = order.indexOf(step);
+
+  /* ── 尚未選性別時顯示選擇畫面 ── */
+  if (!gender) {
+    return (
+      <div style={{ minHeight:"100vh", background:"linear-gradient(155deg,#0d0b08 0%,#121009 55%,#090c0f 100%)", color:"#e8ddd0", fontFamily:"'DM Sans',sans-serif", display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <div style={{ textAlign:"center", padding:"2rem 1.5rem", maxWidth:480, width:"100%" }}>
+          <div style={{ fontFamily:"'Cormorant Garamond'", fontSize:"clamp(1.8rem,6vw,2.8rem)", fontWeight:300, letterSpacing:".08em", marginBottom:".4rem" }}>HAIR ORACLE</div>
+          <div style={{ fontSize:".65rem", letterSpacing:".22em", color:"#5a4a3a", textTransform:"uppercase", marginBottom:"2.5rem" }}>獻爸JE · AI造型診斷</div>
+
+          <p style={{ fontSize:".78rem", color:"#8a7a6a", marginBottom:"2rem", lineHeight:1.8 }}>請選擇您的服務類型，AI 將針對性地提供專業造型建議</p>
+
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"1rem", marginBottom:"1.5rem" }}>
+            {/* 女士 */}
+            <button
+              onClick={()=>setGender("female")}
+              style={{
+                display:"flex", flexDirection:"column", alignItems:"center", gap:".8rem",
+                padding:"1.6rem .8rem",
+                border:"1px solid rgba(200,169,126,.3)",
+                background:"rgba(200,169,126,.04)",
+                borderRadius:"10px", cursor:"pointer", transition:"all .25s",
+                WebkitTapHighlightColor:"transparent", touchAction:"manipulation",
+              }}
+              onMouseEnter={e=>{ e.currentTarget.style.border="1px solid #c8a97e"; e.currentTarget.style.background="rgba(200,169,126,.08)"; }}
+              onMouseLeave={e=>{ e.currentTarget.style.border="1px solid rgba(200,169,126,.3)"; e.currentTarget.style.background="rgba(200,169,126,.04)"; }}
+            >
+              <div style={{ width:52, height:52, borderRadius:"50%", border:"1px solid rgba(200,169,126,.4)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1.6rem" }}>👩</div>
+              <div>
+                <div style={{ fontFamily:"'Cormorant Garamond'", fontSize:"1.25rem", color:"#c8a97e", letterSpacing:".1em" }}>女士造型</div>
+                <div style={{ fontSize:".58rem", color:"#5a4a3a", marginTop:".2rem" }}>剪 · 燙 · 染全方位</div>
+              </div>
+            </button>
+            {/* 男士 */}
+            <button
+              onClick={()=>setGender("male")}
+              style={{
+                display:"flex", flexDirection:"column", alignItems:"center", gap:".8rem",
+                padding:"1.6rem .8rem",
+                border:"1px solid rgba(160,196,184,.3)",
+                background:"rgba(160,196,184,.04)",
+                borderRadius:"10px", cursor:"pointer", transition:"all .25s",
+                WebkitTapHighlightColor:"transparent", touchAction:"manipulation",
+              }}
+              onMouseEnter={e=>{ e.currentTarget.style.border="1px solid #a0c4b8"; e.currentTarget.style.background="rgba(160,196,184,.08)"; }}
+              onMouseLeave={e=>{ e.currentTarget.style.border="1px solid rgba(160,196,184,.3)"; e.currentTarget.style.background="rgba(160,196,184,.04)"; }}
+            >
+              <div style={{ width:52, height:52, borderRadius:"50%", border:"1px solid rgba(160,196,184,.4)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1.6rem" }}>👨</div>
+              <div>
+                <div style={{ fontFamily:"'Cormorant Garamond'", fontSize:"1.25rem", color:"#a0c4b8", letterSpacing:".1em" }}>男士剪髮</div>
+                <div style={{ fontSize:".58rem", color:"#4a5a5a", marginTop:".2rem" }}>Fade · 造型 · 染色</div>
+              </div>
+            </button>
+          </div>
+
+          <div style={{ display:"flex", gap:".6rem", flexWrap:"wrap", justifyContent:"center" }}>
+            {["AI 臉形掃描","針對性方案","ComfyUI Prompt"].map((s,i)=>(
+              <div key={i} style={{ display:"flex", alignItems:"center", gap:".3rem", fontSize:".62rem", color:"#4a3a2a" }}>
+                <span style={{ width:3, height:3, borderRadius:"50%", background:"#3a2a1a" }}/>
+                {s}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minHeight:"100vh", background:"linear-gradient(155deg,#0d0b08 0%,#121009 55%,#090c0f 100%)", color:"#e8ddd0", fontFamily:"'DM Sans',sans-serif" }}>
+      <style>{`* { box-sizing:border-box; } @keyframes scan{0%{top:0}100%{top:100%}} @keyframes spin{to{transform:rotate(360deg)}} button{-webkit-tap-highlight-color:transparent;}`}</style>
+
+      {/* ── HEADER ── */}
+      <header style={{ borderBottom:`1px solid ${ACC2}.16)`, padding: isMobile ? ".65rem 1rem" : ".85rem 1.5rem", background:"rgba(10,9,7,.96)", position:"sticky", top:0, zIndex:100 }}>
+        <div style={{ maxWidth:860, margin:"0 auto" }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:".55rem" }}>
+              <div onClick={reset} style={{ display:"flex", alignItems:"center", gap:".55rem", cursor:"pointer" }}>
+                <span style={{ fontSize: isMobile ? "1.35rem" : "1.65rem", color:ACC, lineHeight:1 }}>髪型</span>
+                <div>
+                  <div style={{ fontFamily:"'Cormorant Garamond'", fontSize: isMobile ? ".9rem" : "1.1rem", letterSpacing:".2em" }}>HAIR ORACLE</div>
+                  {!isMobile && <div style={{ fontSize:".52rem", letterSpacing:".14em", color:"#5a4a3a" }}>獻爸JE · AI造型診斷</div>}
+                </div>
+              </div>
+              {/* Gender badge */}
+              <button
+                onClick={()=>{ setGender(null); reset(); }}
+                style={{
+                  display:"flex", alignItems:"center", gap:".25rem",
+                  padding:".16rem .5rem", borderRadius:"20px",
+                  border:`1px solid ${ACC2}.3)`, background:`${ACC2}.06)`,
+                  color:ACC, fontSize:".58rem", cursor:"pointer",
+                  touchAction:"manipulation",
+                }}>
+                <span>{isMale ? "👨 男士" : "👩 女士"}</span>
+                <span style={{ opacity:.5 }}>切換</span>
+              </button>
+            </div>
+
+            <div style={{ display:"flex", gap:".4rem" }}>
+              {step==="result" && <button onClick={rePickService} style={{ background:`${ACC2}.08)`, border:`1px solid ${ACC2}.35)`, color:ACC, padding: isMobile ? ".28rem .6rem" : ".28rem .7rem", borderRadius:"4px", cursor:"pointer", fontSize: isMobile ? ".68rem" : ".7rem", touchAction:"manipulation" }}>↺ 重選</button>}
+              {step!=="upload" && <button onClick={reset} style={{ background:"none", border:`1px solid ${ACC2}.3)`, color:ACC, padding: isMobile ? ".28rem .6rem" : ".28rem .7rem", borderRadius:"4px", cursor:"pointer", fontSize: isMobile ? ".68rem" : ".7rem", touchAction:"manipulation" }}>← 重新開始</button>}
+            </div>
+          </div>
+
+          {/* Step bar */}
+          <div style={{ display:"flex", alignItems:"center", gap:".2rem", marginTop: isMobile ? ".5rem" : ".3rem" }}>
+            {stepLabels.map((s,i,arr)=>{
+              const sIdx = order.indexOf(s.id);
+              const done = curIdx > sIdx;
+              const active = curIdx===sIdx || (s.id==="pick_service"&&step==="scanning") || (s.id==="result"&&step==="generating");
+              return (
+                <div key={s.id} style={{ display:"flex", alignItems:"center", gap:".2rem", flex: isMobile ? 1 : "none" }}>
+                  <div style={{
+                    display:"flex", alignItems:"center", justifyContent:"center", gap:".28rem",
+                    padding: isMobile ? ".22rem .2rem" : ".2rem .55rem", borderRadius:"20px", fontSize:".62rem",
+                    width: isMobile ? "100%" : "auto",
+                    border:`1px solid ${done?"rgba(160,196,184,.3)":active?`${ACC2}.4)`:"rgba(255,255,255,.07)"}`,
+                    color: done?"#a0c4b8":active?ACC:"#4a3a2a",
+                    background: done?"rgba(160,196,184,.06)":active?`${ACC2}.08)`:"transparent"
+                  }}>
+                    <span style={{ width:13, height:13, borderRadius:"50%", background:"currentColor", color:"#0a0907", fontSize:".5rem", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>{done?"✓":i+1}</span>
+                    <span>{s.label}</span>
+                  </div>
+                  {i<arr.length-1&&<span style={{ fontSize:".65rem", color:done?"#5a4a3a":"#2a2018", flexShrink:0 }}>›</span>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </header>
+
+      <main style={{ maxWidth:860, margin:"0 auto", padding:`1.6rem ${px} 6rem` }}>
+
+        {/* ── UPLOAD ── */}
+        {step==="upload" && (
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap: isMobile ? "1.2rem" : "1.6rem" }}>
+            <div style={{ textAlign:"center" }}>
+              <h1 style={{ fontFamily:"'Cormorant Garamond'", fontSize:"clamp(1.8rem,6vw,3rem)", fontWeight:300 }}>
+                {isMale ? "男士 AI 髮型顧問" : "AI 髮型顧問"}
+              </h1>
+              <p style={{ fontSize:".7rem", letterSpacing:".14em", color:"#8a7a6a", marginTop:".4rem", textTransform:"uppercase" }}>
+                {isMale ? "上傳照片 · Fade 刀法 · 造型搭配" : "上傳照片 · 選擇服務 · 獲得改造建議"}
+              </p>
+            </div>
+
+            {/* ── Preview area (tap to open gallery) ── */}
+            <div
+              onClick={()=>fileRef.current.click()}
+              onDragOver={e=>{e.preventDefault();setDragOver(true);}}
+              onDragLeave={()=>setDragOver(false)}
+              onDrop={e=>{e.preventDefault();setDragOver(false);pickFile(e.dataTransfer.files[0]);}}
+              style={{
+                width:"100%", maxWidth:440, minHeight: isMobile ? 180 : 200,
+                border:`1px dashed ${dragOver?ACC:`${ACC2}.3)`}`,
+                borderRadius:"8px", cursor:"pointer", overflow:"hidden",
+                display:"flex", alignItems:"center", justifyContent:"center",
+                background: dragOver?`${ACC2}.06)`:`${ACC2}.025)`,
+                transition:"all .25s", position:"relative", touchAction:"manipulation",
+              }}>
+              {!preview
+                ? <div style={{ textAlign:"center", padding:"2rem" }}>
+                    <div style={{ fontSize:"2rem", marginBottom:".7rem" }}>{isMale?"🧔":"🖼️"}</div>
+                    <p style={{ fontSize: isMobile ? ".85rem" : ".9rem", color:ACC, marginBottom:".35rem" }}>點擊從圖庫選取</p>
+                    <p style={{ fontSize:".63rem", color:"#5a4a3a" }}>建議正面清晰臉部照 · 自動壓縮</p>
+                  </div>
+                : <>
+                    <img src={preview} alt="preview" style={{ width:"100%", height: isMobile?180:200, objectFit:"cover" }}/>
+                    <div style={{ position:"absolute", bottom:0, left:0, right:0, background:"rgba(10,9,7,.75)", padding:".4rem", textAlign:"center", fontSize:".7rem", color:ACC }}>點擊更換</div>
+                  </>
+              }
+            </div>
+
+            {/* ── 圖庫 / 相機 兩個隱藏 input ── */}
+            <input ref={fileRef}   type="file" accept="image/*" style={{ display:"none" }} onClick={e=>{e.target.value="";}} onChange={e=>pickFile(e.target.files[0])}/>
+            <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display:"none" }} onClick={e=>{e.target.value="";}} onChange={e=>pickFile(e.target.files[0])}/>
+
+            {/* ── Mobile camera button (only shown when no preview, on mobile/tablet) ── */}
+            {isMobile && (
+              <div style={{ display:"flex", gap:".6rem", width:"100%", maxWidth:440 }}>
+                <button
+                  onClick={()=>fileRef.current.click()}
+                  style={{
+                    flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:".45rem",
+                    padding:".65rem .5rem",
+                    border:`1px solid ${ACC2}.25)`, background:`${ACC2}.04)`,
+                    borderRadius:"6px", cursor:"pointer", fontSize:".78rem", color:ACC,
+                    touchAction:"manipulation", WebkitTapHighlightColor:"transparent",
+                  }}>
+                  <span style={{ fontSize:"1.1rem" }}>🖼️</span>
+                  <span>圖庫選取</span>
+                </button>
+                <button
+                  onClick={()=>cameraRef.current.click()}
+                  style={{
+                    flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:".45rem",
+                    padding:".65rem .5rem",
+                    border:`1px solid ${ACC2}.25)`, background:`${ACC2}.04)`,
+                    borderRadius:"6px", cursor:"pointer", fontSize:".78rem", color:ACC,
+                    touchAction:"manipulation", WebkitTapHighlightColor:"transparent",
+                  }}>
+                  <span style={{ fontSize:"1.1rem" }}>📷</span>
+                  <span>直接拍照</span>
+                </button>
+              </div>
+            )}
+            {error && <p style={{ color:"#c46060", fontSize:".78rem", maxWidth:440, textAlign:"center" }}>{error}</p>}
+
+            <button disabled={!preview} onClick={doScan}
+              style={{
+                width:"100%", maxWidth:360, padding: isMobile ? "1rem" : ".9rem 1.5rem",
+                background: preview?`linear-gradient(135deg,${ACC2}.09),${ACC2}.03))`:"transparent",
+                border:`1px solid ${preview?ACC:`${ACC2}.2)`}`, color: preview?ACC:"#4a3a2a",
+                borderRadius:"4px", cursor:preview?"pointer":"not-allowed",
+                fontFamily:"'Cormorant Garamond'", fontSize: isMobile ? "1rem" : "1.05rem",
+                letterSpacing:".2em", transition:"all .28s", touchAction:"manipulation",
+              }}>
+              分析臉形 → 選擇服務 ✦
+            </button>
+          </div>
+        )}
+
+        {/* ── SCANNING / GENERATING ── */}
+        {(step==="scanning"||step==="generating") && (
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:"2rem", paddingTop:"1.5rem" }}>
+            <div style={{ position:"relative", width: isMobile ? 180 : 220, height: isMobile ? 180 : 220 }}>
+              <img src={preview} alt="" style={{ width:"100%", height:"100%", objectFit:"cover", borderRadius:6, filter:"grayscale(20%)" }}/>
+              <div style={{ position:"absolute", top:0, left:0, right:0, height:2, background:`linear-gradient(90deg,transparent,${ACC},transparent)`, animation:"scan 2s linear infinite" }}/>
+              {[{top:0,left:0,borderWidth:"2px 0 0 2px"},{top:0,right:0,borderWidth:"2px 2px 0 0"},{bottom:0,left:0,borderWidth:"0 0 2px 2px"},{bottom:0,right:0,borderWidth:"0 2px 2px 0"}].map((pos,i)=>(
+                <span key={i} style={{ position:"absolute", width:13, height:13, borderColor:ACC, borderStyle:"solid", ...pos }}/>
+              ))}
+            </div>
+            <div style={{ textAlign:"center" }}>
+              <div style={{ width:28, height:28, border:`2px solid ${ACC2}.2)`, borderTopColor:ACC, borderRadius:"50%", animation:"spin 1s linear infinite", margin:"0 auto .8rem" }}/>
+              <h2 style={{ fontFamily:"'Cormorant Garamond'", fontSize:"1.4rem", fontWeight:300 }}>{step==="scanning"?"臉形掃描中…":"生成改造方案…"}</h2>
+              <p style={{ fontSize:".72rem", color:"#8a7a6a", marginTop:".35rem" }}>{statusMsg}</p>
+            </div>
+          </div>
+        )}
+
+        {/* ── PICK SERVICE ── */}
+        {step==="pick_service" && scanResult && (
+          <div style={{ display:"flex", flexDirection:"column", gap:"1.2rem" }}>
+            {/* Face card */}
+            <div style={{
+              display:"grid", gridTemplateColumns: isMobile ? "1fr" : "130px 1fr", gap: isMobile ? ".9rem" : "1.3rem",
+              padding: isMobile ? "1rem" : "1.3rem", borderRadius:6,
+              border:`1px solid ${ACC2}.12)`, borderLeft:`4px solid ${scanResult.info.color}`,
+              background:`${ACC2}.03)`
+            }}>
+              <div style={{ display:"flex", flexDirection: isMobile ? "row" : "column", alignItems: isMobile ? "center" : "flex-start", gap: isMobile ? "1rem" : 0 }}>
+                <div>
+                  <div style={{ fontSize:".56rem", letterSpacing:".22em", color:"#8a7a6a", textTransform:"uppercase", marginBottom:".26rem" }}>臉形診斷</div>
+                  <div style={{ fontFamily:"'Cormorant Garamond'", fontSize: isMobile ? "1.6rem" : "1.9rem", fontWeight:300, color:scanResult.info.color, lineHeight:1.1 }}>{scanResult.info.zh}</div>
+                  <div style={{ fontSize:".68rem", letterSpacing:".18em", color:"#5a4a3a", textTransform:"uppercase", marginTop:".15rem" }}>{scanResult.info.en}</div>
+                </div>
+                <div style={{ flex:1, minWidth:80 }}>
+                  <div style={{ height:3, background:"rgba(255,255,255,.09)", borderRadius:2, margin:".55rem 0 .15rem", overflow:"hidden" }}>
+                    <div style={{ height:"100%", width:`${scanResult.confidence||82}%`, background:scanResult.info.color, borderRadius:2 }}/>
+                  </div>
+                  <div style={{ fontSize:".58rem", color:"#5a4a3a" }}>可信度 {scanResult.confidence||82}%</div>
+                </div>
+              </div>
+              <div>
+                <p style={{ fontFamily:"'Cormorant Garamond'", fontStyle:"italic", fontSize:".84rem", color:scanResult.info.color, borderLeft:`2px solid ${scanResult.info.color}`, paddingLeft:".7rem", marginBottom:".45rem", lineHeight:1.55 }}>「{scanResult.faceAnalysis}」</p>
+                <p style={{ fontSize:".72rem", color:"#8a7a6a", lineHeight:1.65, marginBottom:".45rem" }}>{scanResult.info.desc}</p>
+                <div style={{ fontSize:".73rem", color:"#a09080", lineHeight:1.7, padding:".5rem .7rem", background:"rgba(0,0,0,.18)", borderRadius:4 }}>{scanResult.currentAssessment}</div>
+                {scanResult.assessmentTags && (
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:".25rem", marginTop:".45rem" }}>
+                    {scanResult.assessmentTags.pros?.map(t=>(
+                      <span key={t} style={{ padding:".14rem .5rem", borderRadius:20, fontSize:".62rem", background:"rgba(160,196,184,.1)", color:"#a0c4b8", border:"1px solid rgba(160,196,184,.2)" }}>✅ {t}</span>
+                    ))}
+                    {scanResult.assessmentTags.cons?.map(t=>(
+                      <span key={t} style={{ padding:".14rem .5rem", borderRadius:20, fontSize:".62rem", background:"rgba(196,188,154,.1)", color:"#c4bc9a", border:"1px solid rgba(196,188,154,.2)" }}>⚡ {t}</span>
+                    ))}
+                  </div>
+                )}
+                {/* Male: show fade info if available */}
+                {isMale && scanResult.currentHair?.fadeType && (
+                  <div style={{ marginTop:".45rem", padding:".35rem .6rem", background:"rgba(160,196,184,.07)", border:"1px solid rgba(160,196,184,.18)", borderRadius:4, fontSize:".66rem", color:"#a0c4b8" }}>
+                    ✂ 現有刀法：{scanResult.currentHair.fadeType}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {isMale
+              ? <MaleServicePicker services={services} setServices={setServices} isMobile={isMobile}/>
+              : <FemaleServicePicker services={services} setServices={setServices} isMobile={isMobile}/>
+            }
+
+            {hasSvc && summaryTags.length>0 && (
+              <div style={{ display:"flex", flexWrap:"wrap", gap:".32rem", padding:".65rem .9rem", background:`${ACC2}.05)`, border:`1px solid ${ACC2}.14)`, borderRadius:6 }}>
+                {summaryTags.map((t,i)=>(
+                  <span key={i} style={tagStyle(t.cat)}>
+                    {t.hex && <span style={{ width:7, height:7, borderRadius:"50%", background:t.hex, border:"1px solid rgba(255,255,255,.2)", flexShrink:0 }}/>}
+                    {t.label}
+                  </span>
+                ))}
+              </div>
+            )}
+            {error && <p style={{ color:"#c46060", fontSize:".78rem" }}>{error}</p>}
+            <button disabled={!hasSvc} onClick={doGeneratePlans}
+              style={{
+                width:"100%", padding: isMobile ? "1rem" : ".95rem 1.5rem",
+                background: hasSvc?`linear-gradient(135deg,${ACC2}.09),${ACC2}.03))`:"transparent",
+                border:`1px solid ${hasSvc?ACC:`${ACC2}.2)`}`,
+                color: hasSvc?ACC:"#4a3a2a",
+                borderRadius:4, cursor:hasSvc?"pointer":"not-allowed",
+                fontFamily:"'Cormorant Garamond'", fontSize: isMobile ? "1.05rem" : "1.1rem",
+                letterSpacing:".2em", transition:"all .28s", touchAction:"manipulation",
+              }}>
+              生成我的改造方案 ✦
+            </button>
+          </div>
+        )}
+
+        {/* ── RESULT ── */}
+        {step==="result" && planResult && scanResult && (
+          <div style={{ display:"flex", flexDirection:"column", gap:"1.3rem" }}>
+            {/* Banner */}
+            <div style={{
+              display:"flex", alignItems:"center", gap:".8rem", flexWrap:"wrap",
+              padding: isMobile ? ".8rem" : ".9rem 1.3rem", borderRadius:6,
+              border:`1px solid ${ACC2}.14)`, borderLeft:`4px solid ${scanResult.info.color}`,
+              background:`${ACC2}.04)`
+            }}>
+              <div>
+                <div style={{ fontFamily:"'Cormorant Garamond'", fontSize:"1.05rem", color:scanResult.info.color }}>{scanResult.info.zh}</div>
+                <div style={{ fontSize:".65rem", letterSpacing:".18em", color:"#5a4a3a", textTransform:"uppercase" }}>{scanResult.info.en}</div>
+              </div>
+              <span style={{ color:"#3a2a1a" }}>×</span>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:".28rem" }}>
+                {summaryTags.map((t,i)=>(
+                  <span key={i} style={tagStyle(t.cat)}>
+                    {t.hex && <span style={{ width:7, height:7, borderRadius:"50%", background:t.hex, border:"1px solid rgba(255,255,255,.2)", flexShrink:0 }}/>}
+                    {t.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:".6rem" }}>
+              <div>
+                <h2 style={{ fontFamily:"'Cormorant Garamond'", fontSize: isMobile ? "1.35rem" : "1.55rem", fontWeight:300 }}>✦ 針對性改造方案</h2>
+                <p style={{ fontSize:".66rem", color:"#5a4a3a", marginTop:".1rem" }}>臉形 × {isMale?"刀法造型":"服務"}量身生成</p>
+              </div>
+              <button onClick={rePickService} style={{ display:"flex", alignItems:"center", gap:".35rem", padding: isMobile ? ".5rem .9rem" : ".5rem 1.1rem", border:`1px solid ${ACC2}.4)`, background:`${ACC2}.07)`, color:ACC, borderRadius:4, cursor:"pointer", fontSize: isMobile ? ".72rem" : ".75rem", touchAction:"manipulation" }}>
+                <span>↺</span><span>換個造型</span>
+              </button>
+            </div>
+
+            {/* Plan tabs */}
+            <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,1fr)", gap:".6rem" }}>
+              {planResult.recommendations?.map((r,i)=>{
+                const d = DIFF[r.difficulty]||DIFF.easy;
+                return (
+                  <button key={i} onClick={()=>setActiveRec(i)}
+                    style={{
+                      display:"flex", flexDirection: isMobile ? "row" : "column",
+                      alignItems: isMobile ? "center" : "flex-start", gap: isMobile ? ".6rem" : ".18rem",
+                      padding: isMobile ? ".75rem 1rem" : ".85rem .9rem",
+                      border:`1px solid ${activeRec===i?d.color:"rgba(255,255,255,.08)"}`,
+                      background: activeRec===i?d.bg:"rgba(255,255,255,.02)",
+                      borderRadius:6, cursor:"pointer", textAlign:"left", transition:"all .22s", touchAction:"manipulation",
+                    }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:".5rem", flex: isMobile ? 1 : "none" }}>
+                      <span style={{ width:24, height:24, borderRadius:"50%", flexShrink:0, border:`1px solid ${activeRec===i?d.color:"rgba(255,255,255,.12)"}`, background: activeRec===i?d.bg:"transparent", display:"flex", alignItems:"center", justifyContent:"center", fontSize:".6rem", color:d.color }}>{i+1}</span>
+                      <span style={{ fontSize: isMobile ? ".82rem" : ".75rem", color:"#e8ddd0", lineHeight:1.35 }}>{r.title}</span>
+                    </div>
+                    <div style={{ display:"flex", gap:".4rem", flexShrink:0, flexWrap:"wrap" }}>
+                      <span style={{ fontSize:".6rem", color:d.color }}>{d.label}</span>
+                      <span style={{ fontSize:".6rem", color:"#5a4a3a" }}>⏱ {r.timeAtSalon}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Plan detail */}
+            {rec && (
+              <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.07)", borderRadius:8, overflow:"hidden" }}>
+                <div style={{ display:"flex", alignItems:"flex-start", gap:".7rem", padding: isMobile ? "1.1rem 1rem 0" : "1.4rem 1.6rem 0" }}>
+                  <span style={{ fontFamily:"'Cormorant Garamond'", fontSize: isMobile ? "2.2rem" : "3rem", fontWeight:300, color:"rgba(200,169,126,.14)", lineHeight:1, flexShrink:0 }}>0{activeRec+1}</span>
+                  <div style={{ paddingTop:".2rem" }}>
+                    <h3 style={{ fontSize: isMobile ? ".95rem" : "1.05rem", fontWeight:600, color:"#e8ddd0" }}>{rec.title}</h3>
+                    <div style={{ display:"flex", gap:".3rem", flexWrap:"wrap", marginTop:".4rem" }}>
+                      <span style={{ padding:".13rem .5rem", borderRadius:20, fontSize:".6rem", color:diff.color, background:diff.bg }}>{diff.label}</span>
+                      <span style={{ padding:".13rem .5rem", borderRadius:20, fontSize:".6rem", background:"rgba(200,169,126,.08)", color:"#8a7a6a" }}>⏱ {rec.timeAtSalon}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <p style={{ fontSize:".8rem", color:"#a09080", lineHeight:1.9, padding: isMobile ? ".9rem 1rem" : "1rem 1.6rem", borderBottom:"1px solid rgba(255,255,255,.05)" }}>{rec.description}</p>
+
+                {rec.mainChanges?.length>0 && (
+                  <div style={{ padding: isMobile ? ".9rem 1rem" : "1rem 1.6rem", borderBottom:"1px solid rgba(255,255,255,.05)" }}>
+                    <div style={{ fontSize:".55rem", letterSpacing:".18em", color:"#8a7a6a", textTransform:"uppercase", marginBottom:".55rem" }}>主要改動</div>
+                    {rec.mainChanges.map((c,i)=>(
+                      <div key={i} style={{ display:"flex", gap:".45rem", alignItems:"flex-start", fontSize:".78rem", color:"#a09080", marginBottom:".32rem" }}>
+                        <span style={{ color:ACC, fontSize:".36rem", marginTop:".36rem", flexShrink:0 }}>◆</span>
+                        <span>{c}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Male-only: Fade Advice + Styling Tip */}
+                {isMale && (rec.fadeAdvice || rec.stylingTip) && (
+                  <div style={{ padding: isMobile ? ".9rem 1rem" : "1rem 1.6rem", borderBottom:"1px solid rgba(255,255,255,.05)", display:"grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap:"1rem" }}>
+                    {rec.fadeAdvice && (
+                      <div style={{ background:"rgba(160,196,184,.06)", border:"1px solid rgba(160,196,184,.15)", borderRadius:6, padding:".7rem .9rem" }}>
+                        <div style={{ fontSize:".55rem", letterSpacing:".18em", color:"#a0c4b8", textTransform:"uppercase", marginBottom:".38rem" }}>✂ 刀法建議</div>
+                        <p style={{ fontSize:".74rem", color:"#a0b8b0", lineHeight:1.75 }}>{rec.fadeAdvice}</p>
+                      </div>
+                    )}
+                    {rec.stylingTip && (
+                      <div style={{ background:"rgba(196,188,154,.06)", border:"1px solid rgba(196,188,154,.15)", borderRadius:6, padding:".7rem .9rem" }}>
+                        <div style={{ fontSize:".55rem", letterSpacing:".18em", color:"#c4bc9a", textTransform:"uppercase", marginBottom:".38rem" }}>💈 打理技巧</div>
+                        <p style={{ fontSize:".74rem", color:"#b0a888", lineHeight:1.75 }}>{rec.stylingTip}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ComfyUI Box */}
+                <div style={{ borderTop:"1px solid rgba(255,255,255,.07)" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:".75rem", padding: isMobile ? ".8rem 1rem" : ".9rem 1.6rem", background:"rgba(0,0,0,.2)", flexWrap:"wrap" }}>
+                    <span style={{ fontSize:"1rem", flexShrink:0 }}>⚙️</span>
+                    <div>
+                      <div style={{ fontSize: isMobile ? ".78rem" : ".84rem", color:ACC }}>ComfyUI Flux Inpainting Prompt</div>
+                      <div style={{ fontSize:".62rem", color:"#8a7a6a", marginTop:".08rem" }}>{summaryTags.map(t=>t.label).join(" · ")}</div>
+                    </div>
+                  </div>
+                  {[["✅ Positive","#a0c4b8",finalPrompts.positive],["❌ Negative","#c4a0a0",finalPrompts.negative]].map(([lbl,clr,txt])=>(
+                    <div key={lbl} style={{ padding: isMobile ? ".8rem 1rem" : ".9rem 1.6rem", borderBottom:"1px solid rgba(255,255,255,.05)" }}>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:".4rem" }}>
+                        <span style={{ fontSize:".58rem", letterSpacing:".08em", textTransform:"uppercase", color:clr }}>{lbl}</span>
+                        <CopyBtn text={txt} label="複製"/>
+                      </div>
+                      <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
+                        <pre style={{ background:"rgba(0,0,0,.42)", border:"1px solid rgba(255,255,255,.07)", borderRadius:4, padding: isMobile ? ".6rem .7rem" : ".65rem .8rem", fontFamily:"'DM Mono',monospace", fontSize: isMobile ? ".62rem" : ".66rem", color:"#b8c8b4", lineHeight:1.6, whiteSpace:"pre-wrap", wordBreak:"break-all", margin:0 }}>{txt}</pre>
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{ padding: isMobile ? ".8rem 1rem" : ".85rem 1.6rem", borderBottom:"1px solid rgba(255,255,255,.05)", background:"rgba(196,188,154,.03)" }}>
+                    <div style={{ fontSize:".6rem", letterSpacing:".12em", color:"#c4bc9a", textTransform:"uppercase", marginBottom:".38rem" }}>🖌️ 遮罩建議</div>
+                    <span style={{ display:"inline-block", padding:".12rem .5rem", background:"rgba(196,188,154,.12)", border:"1px solid rgba(196,188,154,.24)", borderRadius:20, fontSize:".62rem", color:"#c4bc9a", marginBottom:".38rem" }}>{rec.maskArea}</span>
+                    <p style={{ fontSize:".72rem", color:"#8a7a6a", lineHeight:1.7 }}>{rec.maskTips}</p>
+                  </div>
+                  <div style={{ padding: isMobile ? ".8rem 1rem" : ".85rem 1.6rem" }}>
+                    <CopyBtn block text={fullCopyText} label="📋 一鍵複製全部設定"/>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div style={{ textAlign:"center", padding: isMobile ? "1.2rem" : "1.5rem", border:`1px solid ${ACC2}.16)`, borderRadius:6, background:`linear-gradient(135deg,${ACC2}.05),${ACC2}.015))` }}>
+              <p style={{ fontSize:".78rem", color:"#8a7a6a", lineHeight:1.8 }}>🌸 帶著 ComfyUI 預覽圖來店，我們為您精準重現！</p>
+              <p style={{ fontFamily:"'Cormorant Garamond'", fontSize:"1.3rem", color:ACC, fontStyle:"italic", marginTop:".25rem" }}>獻爸JE染燙快剪屋</p>
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(React.createElement(HairOracle));
+  </script>
+</body>
+</html>
