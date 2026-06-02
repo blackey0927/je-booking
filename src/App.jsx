@@ -22,9 +22,9 @@ class ErrorBoundary extends React.Component {
 ═══════════════════════════════════════════════════════════ */
 const SALON = {
   name: "JE染燙快剪屋",
-  address: "台中市西屯區太原路一段53號",
+  address: "台中市西屯區太原路一段77號",
   phone: "0981425802",
-  mapQuery: "台中市西屯區太原路一段53號",
+  mapQuery: "台中市西屯區太原路一段77號",
   lineOaId: "@658qpvwi",
   // 每日營業時間（分鐘制）: 0=日 1=一 2=二 3=三 4=四 5=五 6=六
   dayHours: {
@@ -439,17 +439,6 @@ function fbListen(path, onData) {
 /* ═══════════════════════════════════════════════════════════
    LINE SETTINGS HOOK
 ═══════════════════════════════════════════════════════════ */
-function useBookingRules() {
-  const [settings, setSettings] = useState({ blockSameDay: false });
-  useEffect(() => {
-    return fbListen("je_salon_settings", val => {
-      if (val) setSettings(s => ({ ...s, ...val }));
-    });
-  }, []);
-  const save = (next) => { setSettings(next); fbWrite("je_salon_settings", next); };
-  return { settings, save };
-}
-
 function useLINESettings() {
   const [settings, setSettings] = useState({ webhookUrl:"", token:"", ownerNotify:true });
   const [loaded, setLoaded] = useState(false);
@@ -822,7 +811,7 @@ function useCustomers() {
 /* ═══════════════════════════════════════════════════════════
    ADMIN AUTH (PIN lock for management tabs)
 ═══════════════════════════════════════════════════════════ */
-const ADMIN_TABS = new Set(["calendar","schedule","stylists","customers","line","rules"]);
+const ADMIN_TABS = new Set(["calendar","schedule","stylists","customers","line"]);
 const DEFAULT_PIN = "0000";
 
 function useAdminAuth() {
@@ -1252,7 +1241,7 @@ function HairAnalysisModal({ onClose, onStartBooking, services = DEFAULT_SERVICE
   );
 }
 
-function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEFAULT_STYLISTS, services=DEFAULT_SERVICES, svcPhotos={}, salonConfig={}, adminAuth={}, salonSettings={} }) {
+function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEFAULT_STYLISTS, services=DEFAULT_SERVICES, svcPhotos={}, salonConfig={}, adminAuth={} }) {
   // step -1 = LINE 設定前置步驟, 0 = 選服務, 1 = 選設計師, ...
   const [step, setStep] = useState(-1);
   const [showHairAnalysis, setShowHairAnalysis] = useState(false);
@@ -2231,7 +2220,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
                   const day = i+1;
                   const d   = new Date(calDate.y, calDate.m, day);
                   d.setHours(0,0,0,0);
-                  const isPast      = salonSettings.blockSameDay ? d <= today : d < today;
+                  const isPast      = d < today;
                   const isAvailable = sel.stylist === "any"
                     ? STYLISTS.some(st => isStylistAvailable(st, d, stylistSettings))
                     : isStylistAvailable(stylistObj, d, stylistSettings);
@@ -4044,62 +4033,6 @@ function CustomersView({ customers, onDelete, bookings, isMobile }) {
 /* ═══════════════════════════════════════════════════════════
    LINE SETTINGS VIEW
 ═══════════════════════════════════════════════════════════ */
-function BookingRulesView({ settings = {}, onSave, isMobile }) {
-  const [local, setLocal] = useState(settings);
-  useEffect(() => setLocal(settings), [settings]);
-  const [saved, setSaved] = useState(false);
-
-  const handleSave = () => {
-    onSave(local);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
-
-  return (
-    <div style={{ padding: isMobile?"0":"0 .5rem" }}>
-      <div style={{ fontSize:".78rem", letterSpacing:".14em", color:"var(--ink3)",
-        textTransform:"uppercase", marginBottom:"1.2rem" }}>預約規則設定</div>
-
-      <div style={{ background:"var(--card)", border:"1px solid var(--line)",
-        borderRadius:"var(--r)", overflow:"hidden", marginBottom:"1rem" }}>
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-          padding:"1rem 1.1rem" }}>
-          <div>
-            <div style={{ fontSize:".88rem", fontWeight:500, color:"var(--ink)" }}>封鎖當日預約</div>
-            <div style={{ fontSize:".74rem", color:"var(--ink3)", marginTop:".2rem", lineHeight:1.6 }}>
-              開啟後，客人無法選擇今天的日期預約<br/>
-              適合人手不足或需暫停當日接客時使用
-            </div>
-          </div>
-          <div onClick={() => setLocal(p => ({ ...p, blockSameDay: !p.blockSameDay }))}
-            style={{ width:44, height:24, borderRadius:12, cursor:"pointer", flexShrink:0, marginLeft:"1.2rem",
-              background: local.blockSameDay ? "var(--copper)" : "var(--line)",
-              position:"relative", transition:"background .2s" }}>
-            <div style={{ position:"absolute", top:2,
-              left: local.blockSameDay ? 22 : 2,
-              width:20, height:20, borderRadius:"50%",
-              background:"#fff", transition:"left .2s",
-              boxShadow:"0 1px 3px rgba(0,0,0,.2)" }}/>
-          </div>
-        </div>
-      </div>
-
-      {local.blockSameDay && (
-        <div style={{ padding:".65rem .9rem", background:"rgba(196,131,90,.08)",
-          border:"1px solid rgba(196,131,90,.25)", borderRadius:8, marginBottom:"1rem",
-          fontSize:".78rem", color:"var(--copper)", lineHeight:1.6 }}>
-          ⚠️ 當日預約封鎖中 — 客人今天無法線上預約，電話/現場仍可接受
-        </div>
-      )}
-
-      <button onClick={handleSave} className="btn-copper"
-        style={{ width:"100%", padding:".72rem", fontSize:".9rem" }}>
-        {saved ? "✓ 已儲存" : "儲存設定"}
-      </button>
-    </div>
-  );
-}
-
 function LINESettingsView({ settings, onSave, bookings, isMobile, adminAuth }) {
   const [form, setForm] = useState({ ...settings });
   const [saved, setSaved] = useState(false);
@@ -4374,7 +4307,6 @@ const TABS = [
   { id:"services",  label:"服務",   icon:"✂️" },
   { id:"customers", label:"客戶",   icon:"👥" },
   { id:"line",      label:"LINE",   icon:"💬" },
-  { id:"rules",     label:"規則",   icon:"⚙️" },
 ];
 
 export default function SalonApp() {
@@ -4383,7 +4315,6 @@ export default function SalonApp() {
   const [calendarJump, setCalendarJump] = useState(null);
   const [isMobile, setIsMobile]     = useState(() => window.innerWidth < 640);
   const { bookings, loaded, fbReady, addBooking, updateStatus, updateBooking, deleteBooking } = useBookings();
-  const { settings: salonSettings, save: saveSalonSettings } = useBookingRules();
   const { settings: lineSettings, save: saveLineSettings } = useLINESettings();
   const stylistMgr   = useStylistSettings();
   const salonConfig  = useSalonSettings();
@@ -4665,7 +4596,7 @@ export default function SalonApp() {
         {!loaded
           ? <div style={{ textAlign:"center", padding:"4rem 1rem", color:"#999999", fontSize:"1.32rem" }}>載入中…</div>
           : <>
-              {tab==="book"     && <ErrorBoundary><BookingFlow bookings={bookings} onBook={handleBook} isMobile={isMobile} stylistSettings={stylistMgr.settings} stylists={STYLISTS} services={SERVICES} svcPhotos={svcPhotosMgr.photos} salonConfig={salonConfig} adminAuth={adminAuth} salonSettings={salonSettings}/></ErrorBoundary>}
+              {tab==="book"     && <ErrorBoundary><BookingFlow bookings={bookings} onBook={handleBook} isMobile={isMobile} stylistSettings={stylistMgr.settings} stylists={STYLISTS} services={SERVICES} svcPhotos={svcPhotosMgr.photos} salonConfig={salonConfig} adminAuth={adminAuth}/></ErrorBoundary>}
               {tab==="services" && <ServicesMenu isMobile={isMobile} servicesMgr={adminAuth.unlocked ? servicesMgr : null} svcPhotosMgr={adminAuth.unlocked ? svcPhotosMgr : null} svcPhotos={svcPhotosMgr.photos}/>}
               {ADMIN_TABS.has(tab) && (
                 adminAuth.unlocked
@@ -4675,7 +4606,6 @@ export default function SalonApp() {
                       {tab==="stylists"  && <StylistRoster bookings={bookings} isMobile={isMobile} stylistMgr={stylistMgr} stylistsMgr={stylistsMgr}/>}
                       {tab==="customers" && <CustomersView customers={customerMgr.customers} onDelete={customerMgr.deleteCustomer} bookings={bookings} isMobile={isMobile}/>}
                       {tab==="line"      && <LINESettingsView settings={lineSettings} onSave={saveLineSettings} bookings={bookings} isMobile={isMobile} adminAuth={adminAuth}/>}
-                      {tab==="rules"     && <BookingRulesView settings={salonSettings} onSave={saveSalonSettings} isMobile={isMobile}/>}
                     </>
                   : <AdminLockScreen onUnlock={adminAuth.unlock} isMobile={isMobile}/>
               )}
