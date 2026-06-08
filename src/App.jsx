@@ -1607,15 +1607,13 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
             </p>
           </div>
 
-          {/* 步驟卡片 */}
+          {/* 步驟卡片 — 簡化版：只保留加入好友 */}
           <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:"var(--r)", overflow:"hidden", marginBottom:"1rem" }}>
-            {/* Step A */}
-            <div style={{ padding:"1rem 1.1rem", borderBottom:"1px solid var(--line)", display:"flex", gap:".85rem", alignItems:"flex-start" }}>
-              <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(6,199,85,.12)", border:"1px solid rgba(6,199,85,.3)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:".78rem", fontWeight:700, color:"#06C755", flexShrink:0, marginTop:".1rem" }}>1</div>
+            <div style={{ padding:"1rem 1.1rem", display:"flex", gap:".85rem", alignItems:"center" }}>
               <div style={{ flex:1 }}>
                 <div style={{ fontSize:".9rem", fontWeight:600, color:"var(--ink)", marginBottom:".3rem" }}>加入 LINE 官方帳號</div>
-                <div style={{ fontSize:".82rem", color:"var(--ink3)", lineHeight:1.65, marginBottom:".6rem" }}>
-                  點擊下方按鈕加入好友，或搜尋 <b style={{ color:"var(--ink2)" }}>{SALON.lineOaId}</b>
+                <div style={{ fontSize:".82rem", color:"var(--ink3)", lineHeight:1.65, marginBottom:".65rem" }}>
+                  加入後可接收預約確認與提醒訊息，搜尋 <b style={{ color:"var(--ink2)" }}>{SALON.lineOaId}</b>
                 </div>
                 <a href={`https://line.me/R/ti/p/${SALON.lineOaId}`} target="_blank" rel="noreferrer"
                   style={{ display:"inline-flex", alignItems:"center", gap:".4rem", padding:".42rem .9rem", background:"#06C755", color:"#fff", borderRadius:20, fontSize:".82rem", fontWeight:600, textDecoration:"none" }}>
@@ -1623,84 +1621,14 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
                 </a>
               </div>
             </div>
-            {/* Step B */}
-            <div style={{ padding:"1rem 1.1rem", borderBottom:"1px solid var(--line)", display:"flex", gap:".85rem", alignItems:"flex-start" }}>
-              <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(6,199,85,.12)", border:"1px solid rgba(6,199,85,.3)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:".78rem", fontWeight:700, color:"#06C755", flexShrink:0, marginTop:".1rem" }}>2</div>
-              <div>
-                <div style={{ fontSize:".9rem", fontWeight:600, color:"var(--ink)", marginBottom:".3rem" }}>傳送「查詢我的預約」</div>
-                <div style={{ fontSize:".82rem", color:"var(--ink3)", lineHeight:1.65 }}>
-                  在 LINE 聊天室傳送這句話，bot 會立即回覆您的 userId（U 開頭 33 碼）
-                </div>
-              </div>
-            </div>
-            {/* Step C — userId input */}
-            <div style={{ padding:"1rem 1.1rem" }}>
-              <div style={{ display:"flex", gap:".85rem", alignItems:"flex-start" }}>
-                <div style={{ width:28, height:28, borderRadius:"50%", background: linePasted?"rgba(6,199,85,.12)":"rgba(196,131,90,.1)", border:`1px solid ${linePasted?"rgba(6,199,85,.3)":"var(--copper-bd)"}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:".78rem", fontWeight:700, color:linePasted?"#06C755":"var(--copper)", flexShrink:0, marginTop:".1rem" }}>
-                  {linePasted ? "✓" : "3"}
-                </div>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:".9rem", fontWeight:600, color:"var(--ink)", marginBottom:".3rem" }}>貼上您的 userId</div>
-                  <div style={{ fontSize:".82rem", color:"var(--ink3)", marginBottom:".6rem" }}>複製 bot 回覆的 U 開頭 33 碼，貼到下方欄位</div>
-                  {/* 大輸入框 + 貼上按鈕 */}
-                  <div style={{ display:"flex", gap:".5rem", alignItems:"stretch" }}>
-                    <input
-                      type="text"
-                      value={lineIdInput}
-                      onChange={e => {
-                        const v = e.target.value.trim();
-                        setLineIdInput(v);
-                        setLinePasted(/^U[0-9a-zA-Z]{32}$/.test(v));
-                      }}
-                      placeholder="Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                      style={{
-                        flex:1, padding:".65rem .8rem",
-                        fontSize: isMobile?".78rem":".85rem",
-                        fontFamily:"'DM Mono',monospace",
-                        letterSpacing:".04em",
-                        background:"var(--bg2)", border:`1.5px solid ${linePasted?"rgba(6,199,85,.5)":"var(--line)"}`,
-                        borderRadius:"var(--r-sm)", color:"var(--ink)",
-                        outline:"none", transition:"border .2s",
-                      }}
-                    />
-                    {navigator.clipboard && (
-                      <button onClick={async()=>{
-                        try {
-                          const text = await navigator.clipboard.readText();
-                          const v = text.trim();
-                          setLineIdInput(v);
-                          setLinePasted(/^U[0-9a-zA-Z]{32}$/.test(v));
-                        } catch(_) {}
-                      }}
-                        style={{ padding:".65rem .9rem", borderRadius:"var(--r-sm)", border:"1px solid var(--line)", background:"var(--card)", color:"var(--ink2)", fontSize:".82rem", cursor:"pointer", whiteSpace:"nowrap", display:"flex", alignItems:"center", gap:".3rem" }}>
-                        📋 貼上
-                      </button>
-                    )}
-                  </div>
-                  {linePasted && (
-                    <div style={{ marginTop:".4rem", fontSize:".76rem", color:"#06C755", display:"flex", alignItems:"center", gap:".3rem" }}>
-                      ✅ userId 格式正確，已準備好接收通知
-                    </div>
-                  )}
-                  {lineIdInput && !linePasted && (
-                    <div style={{ marginTop:".4rem", fontSize:".76rem", color:"#c46060" }}>
-                      ⚠️ 格式不符（需為 U 開頭 33 碼），請重新確認
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* 操作按鈕 */}
           <div style={{ display:"flex", flexDirection:"column", gap:".6rem" }}>
-            <button onClick={()=>{
-              if (linePasted) setForm(p=>({...p, lineId: lineIdInput}));
-              setStep(0);
-            }}
+            <button onClick={()=>setStep(0)}
               className="btn-copper"
               style={{ padding:".78rem 1rem", fontSize:".95rem", letterSpacing:".08em" }}>
-              {linePasted ? "✓ 已設定 LINE，開始預約 →" : "略過，直接開始預約 →"}
+              開始預約 →
             </button>
             <a href="/hair-oracle.html" target="_blank" rel="noopener"
               style={{ display:"block", padding:".65rem 1rem", fontSize:".88rem", letterSpacing:".06em",
@@ -1709,11 +1637,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
                 transition:"all .15s" }}>
               ✦ AI 深度造型診斷 · HAIR ORACLE
             </a>
-            {!linePasted && (
-              <p style={{ textAlign:"center", fontSize:".76rem", color:"var(--ink4)", margin:0 }}>
-                不需要 LINE 通知也可以正常預約
-              </p>
-            )}
+
           </div>
         </div>
       )}
@@ -1767,23 +1691,12 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
               const active = sel.services.includes(svc.id);
               const photo  = svcPhotos[svc.id];
               return (
-                <button key={svc.id} onClick={()=>{
-                  const ADDON_ONLY = ["shampoo"];
-                  const isAddon = ADDON_ONLY.includes(svc.id);
-                  setSel(p=>{
-                    if (p.services.includes(svc.id)) {
-                      // 取消選擇
-                      return {...p, services:p.services.filter(id=>id!==svc.id), stylist:null, date:null, time:null};
-                    }
-                    const otherSelected = p.services.some(id => !ADDON_ONLY.includes(id));
-                    if (isAddon && !otherSelected) {
-                      // 阻止單獨選擇附加服務
-                      alert("「" + svc.zh + "」需搭配剪髮、燙髮或染髮等主要服務一起預約");
-                      return p;
-                    }
-                    return {...p, services:[...p.services, svc.id], stylist:null, date:null, time:null};
-                  });
-                }}
+                <button key={svc.id} onClick={()=>setSel(p=>{
+                  const next = p.services.includes(svc.id)
+                    ? p.services.filter(id=>id!==svc.id)
+                    : [...p.services, svc.id];
+                  return {...p, services:next, stylist:null, date:null, time:null};
+                })}
                   className={`svc-card fade-up fade-up-${Math.min(si+1,6)}${active?" active":""}`}
                   style={{ display:"flex", flexDirection:"column", gap:0, padding:0, textAlign:"left", WebkitTapHighlightColor:"transparent", overflow:"hidden" }}>
 
@@ -1806,12 +1719,6 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
                     {svc.timeFrom > 0 && (
                       <div style={{ position:"absolute", top:".5rem", left:".5rem", fontSize:".6rem", padding:".1rem .38rem", borderRadius:20, background:"rgba(196,131,90,.85)", color:"#fff", backdropFilter:"blur(4px)" }}>
                         ⏰ {minsToTime(svc.timeFrom)}後
-                      </div>
-                    )}
-                    {/* 附加服務提示 */}
-                    {["shampoo"].includes(svc.id) && (
-                      <div style={{ position:"absolute", top:".5rem", left:".5rem", fontSize:".6rem", padding:".1rem .38rem", borderRadius:20, background:"rgba(80,80,80,.75)", color:"#fff", backdropFilter:"blur(4px)", letterSpacing:".03em" }}>
-                        ＋ 加購
                       </div>
                     )}
                     {/* 服務名稱浮層 */}
