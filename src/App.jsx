@@ -1598,14 +1598,6 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
           </div>
 
           {/* ══ LINE 設定前置 ══ */}
-          {/* 標題 */}
-          <div style={{ textAlign:"center", marginBottom:"1.4rem" }}>
-            <div style={{ fontSize:"1.4rem", marginBottom:".4rem" }}>💬</div>
-            <h2 style={{ ...h2Style, marginBottom:".25rem", fontSize:isMobile?"1.1rem":"1.2rem" }}>設定 LINE 通知（可略過）</h2>
-            <p style={{ fontSize:".82rem", color:"var(--ink3)", lineHeight:1.7, margin:0 }}>
-              完成設定後，預約確認與提醒訊息將直接傳到您的 LINE
-            </p>
-          </div>
 
           {/* 步驟卡片 — 簡化版：只保留加入好友 */}
           <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:"var(--r)", overflow:"hidden", marginBottom:"1rem" }}>
