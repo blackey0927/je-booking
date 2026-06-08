@@ -1691,12 +1691,21 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
               const active = sel.services.includes(svc.id);
               const photo  = svcPhotos[svc.id];
               return (
-                <button key={svc.id} onClick={()=>setSel(p=>{
-                  const next = p.services.includes(svc.id)
-                    ? p.services.filter(id=>id!==svc.id)
-                    : [...p.services, svc.id];
-                  return {...p, services:next, stylist:null, date:null, time:null};
-                })}
+                <button key={svc.id} onClick={()=>{
+                  const ADDON_ONLY = ["shampoo"];
+                  const isAddon = ADDON_ONLY.includes(svc.id);
+                  setSel(p=>{
+                    if (p.services.includes(svc.id)) {
+                      return {...p, services:p.services.filter(id=>id!==svc.id), stylist:null, date:null, time:null};
+                    }
+                    const otherSelected = p.services.some(id => !ADDON_ONLY.includes(id));
+                    if (isAddon && !otherSelected) {
+                      alert("「" + svc.zh + "」需搭配剪髮、燙髮或染髮等主要服務一起預約");
+                      return p;
+                    }
+                    return {...p, services:[...p.services, svc.id], stylist:null, date:null, time:null};
+                  });
+                }}
                   className={`svc-card fade-up fade-up-${Math.min(si+1,6)}${active?" active":""}`}
                   style={{ display:"flex", flexDirection:"column", gap:0, padding:0, textAlign:"left", WebkitTapHighlightColor:"transparent", overflow:"hidden" }}>
 
@@ -1719,6 +1728,11 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
                     {svc.timeFrom > 0 && (
                       <div style={{ position:"absolute", top:".5rem", left:".5rem", fontSize:".6rem", padding:".1rem .38rem", borderRadius:20, background:"rgba(196,131,90,.85)", color:"#fff", backdropFilter:"blur(4px)" }}>
                         ⏰ {minsToTime(svc.timeFrom)}後
+                      </div>
+                    )}
+                    {["shampoo"].includes(svc.id) && (
+                      <div style={{ position:"absolute", top:".5rem", left:".5rem", fontSize:".6rem", padding:".1rem .38rem", borderRadius:20, background:"rgba(80,80,80,.75)", color:"#fff", backdropFilter:"blur(4px)", letterSpacing:".03em" }}>
+                        ＋ 加購
                       </div>
                     )}
                     {/* 服務名稱浮層 */}
