@@ -506,9 +506,15 @@ function useStylistSettings() {
   useEffect(() => {
     const unsubSched = fbListen("je_stylist_sched", sched => {
       setSettings(prev => {
+        // 合併所有已知設計師（DEFAULT + 動態新增）的 ID
+        const allIds = new Set([
+          ...DEFAULT_STYLISTS.map(s => s.id),
+          ...Object.keys(prev),
+          ...Object.keys(sched || {}),
+        ]);
         const merged = {};
-        for (const st of DEFAULT_STYLISTS) {
-          merged[st.id] = { ...(sched?.[st.id]||{}), photo: prev[st.id]?.photo || PHOTO_DEFAULTS[st.id] || null };
+        for (const id of allIds) {
+          merged[id] = { ...(sched?.[id]||{}), photo: prev[id]?.photo || PHOTO_DEFAULTS[id] || null };
         }
         return merged;
       });
@@ -516,9 +522,15 @@ function useStylistSettings() {
 
     const unsubPhotos = fbListen("je_stylist_photos", photos => {
       setSettings(prev => {
+        // 合併所有已知設計師（DEFAULT + 動態新增 + photos 裡的）的 ID
+        const allIds = new Set([
+          ...DEFAULT_STYLISTS.map(s => s.id),
+          ...Object.keys(prev),
+          ...Object.keys(photos || {}),
+        ]);
         const merged = { ...prev };
-        for (const st of DEFAULT_STYLISTS) {
-          merged[st.id] = { ...(merged[st.id]||{}), photo: photos?.[st.id] || PHOTO_DEFAULTS[st.id] || null };
+        for (const id of allIds) {
+          merged[id] = { ...(merged[id]||{}), photo: photos?.[id] || PHOTO_DEFAULTS[id] || null };
         }
         return merged;
       });
@@ -532,7 +544,8 @@ function useStylistSettings() {
     const schedOnly = {};
     for (const id of Object.keys(next)) {
       const { photo: _p, ...rest } = next[id] || {};
-      schedOnly[id] = rest;
+      // 只儲存有實際內容的欄位（避免寫入空物件）
+      if (Object.keys(rest).length > 0) schedOnly[id] = rest;
     }
     fbWrite("je_stylist_sched", schedOnly);
   };
