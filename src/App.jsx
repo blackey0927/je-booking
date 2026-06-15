@@ -200,6 +200,24 @@ function genCancelToken() {
 }
 
 const ALL_SLOTS  = generateSlots(SALON.hours.open, SALON.hours.close, SALON.slotMinutes);
+
+// 檢查某日期的某時段是否在店休時段內
+function isSlotClosedByPeriod(dateStr, slotStr, durationMins, closedPeriods = []) {
+  const slotMins = slotToMinutes(slotStr);
+  const slotEnd  = slotMins + (durationMins || 0);
+  return (closedPeriods || []).some(p => {
+    if (p.date !== dateStr) return false;
+    if (!p.from || !p.to) return true; // 未指定時間 = 全天
+    const fromMins = slotToMinutes(p.from);
+    const toMins   = slotToMinutes(p.to);
+    return slotMins < toMins && slotEnd > fromMins; // 時段有重疊
+  });
+}
+
+// 檢查某日期是否有任何店休時段（供日曆標記用）
+function getDayClosurePeriods(dateStr, closedPeriods = []) {
+  return (closedPeriods || []).filter(p => p.date === dateStr);
+}
 const HOUR_SLOTS = generateSlots(SALON.hours.open, SALON.hours.close, 60);
 
 /* ═══════════════════════════════════════════════════════════
@@ -440,7 +458,7 @@ function fbListen(path, onData) {
    LINE SETTINGS HOOK
 ═══════════════════════════════════════════════════════════ */
 function useBookingRules() {
-  const [settings, setSettings] = useState({ blockSameDay: false });
+  const [settings, setSettings] = useState({ blockSameDay: false, closedPeriods: [] });
   useEffect(() => {
     return fbListen("je_salon_settings", val => {
       if (val) setSettings(s => ({ ...s, ...val }));
@@ -1348,6 +1366,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
         if (slotMins + totalDuration > dh.close) return false;
         if (minStartMins > 0 && slotMins < minStartMins) return false;
         if (isToday && slotMins < nowMins + 15) return false;
+        if (isSlotClosedByPeriod(formatDate(sel.date), slot, totalDuration, salonSettings.closedPeriods)) return false;
         return available.some(st => isSlotAvailable(slot, st.id, date, bookings, totalDuration));
       });
     }
@@ -1358,6 +1377,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
       if (slotMins + totalDuration > dh.close) return false;
       if (minStartMins > 0 && slotMins < minStartMins) return false;
       if (isToday && slotMins < nowMins + 15) return false;
+      if (isSlotClosedByPeriod(formatDate(sel.date), slot, totalDuration, salonSettings.closedPeriods)) return false;
       return isSlotAvailable(slot, sel.stylist, sel.date, bookings, totalDuration);
     });
   }, [sel.stylist, sel.date, sel.services, bookings, totalDuration, selSvcs, stylistSettings]);
@@ -2174,7 +2194,12 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
                   const day = i+1;
                   const d   = new Date(calDate.y, calDate.m, day);
                   d.setHours(0,0,0,0);
-                  const isPast      = salonSettings.blockSameDay ? d <= today : d < today;
+                  const dateStr_cal   = formatDate(d);
+                  const closures_cal  = getDayClosurePeriods(dateStr_cal, salonSettings.closedPeriods);
+                  const isFullClosed  = closures_cal.some(p => !p.from || !p.to || (slotToMinutes(p.from)<=slotToMinutes("09:00") && slotToMinutes(p.to)>=slotToMinutes("20:00")));
+                  const isPartClosed  = closures_cal.length > 0 && !isFullClosed;
+                  const isStoreClosed = isFullClosed;
+                  const isPast        = isStoreClosed || (salonSettings.blockSameDay ? d <= today : d < today);
                   const isAvailable = sel.stylist === "any"
                     ? STYLISTS.some(st => isStylistAvailable(st, d, stylistSettings))
                     : isStylistAvailable(stylistObj, d, stylistSettings);
@@ -2185,13 +2210,19 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
                       onClick={()=>setSel(p=>({...p,date:d,time:null}))}
                       style={{
                         aspectRatio:"1", borderRadius:"50%", border:"none",
-                        background: isSelected?"var(--copper)":isToday?"rgba(200,169,126,.2)":"transparent",
+                        background: isSelected?"var(--copper)":isToday?"rgba(200,169,126,.2)":isStoreClosed?"rgba(196,131,90,.08)":"transparent",
                         color: isSelected?"#ffffff":isPast?"#cccccc":!isAvailable?"#cccccc":"var(--ink)",
                         fontSize: isMobile?".7rem":".75rem", cursor:isPast||!isAvailable?"default":"pointer",
                         fontWeight: isToday&&!isSelected?700:400, transition:"all .15s",
                         position:"relative",
                       }}>
                       {day}
+                      {(isStoreClosed || isPartClosed) && !isPast && d >= today && (
+                        <span style={{ position:"absolute", bottom:1, left:"50%", transform:"translateX(-50%)",
+                          fontSize:".42rem", color:isFullClosed?"#c44a3a":"var(--copper)", lineHeight:1, letterSpacing:0 }}>
+                          {isFullClosed?"休":"部分"}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -4034,6 +4065,95 @@ function BookingRulesView({ settings = {}, onSave, isMobile }) {
           ⚠️ 當日預約封鎖中 — 客人今天無法線上預約，電話/現場仍可接受
         </div>
       )}
+
+      {/* ── 店休時段管理 ── */}
+      <div style={{ fontSize:".82rem", fontWeight:600, color:"var(--ink)", margin:"1.2rem 0 .6rem" }}>店休時段管理</div>
+      <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:"var(--r)", overflow:"hidden", marginBottom:"1rem" }}>
+        <div style={{ padding:".85rem 1.1rem", borderBottom:"1px solid var(--line)" }}>
+          <div style={{ fontSize:".74rem", color:"var(--ink3)", marginBottom:".8rem", lineHeight:1.6 }}>
+            可設定整天或特定時段店休。「不指定時間」代表整天休息。
+          </div>
+          {/* 新增列 */}
+          {(() => {
+            const [newDate, setNewDate] = React.useState("");
+            const [newFrom, setNewFrom] = React.useState("");
+            const [newTo,   setNewTo]   = React.useState("");
+            const [allDay,  setAllDay]  = React.useState(true);
+            const timeOpts = [];
+            for (let h = 8; h <= 21; h++) {
+              timeOpts.push(`${String(h).padStart(2,"0")}:00`);
+              if (h < 21) timeOpts.push(`${String(h).padStart(2,"0")}:30`);
+            }
+            const add = () => {
+              if (!newDate) return;
+              const period = allDay
+                ? { date: newDate }
+                : { date: newDate, from: newFrom||"09:00", to: newTo||"18:00" };
+              const cur = local.closedPeriods || [];
+              setLocal(p => ({ ...p, closedPeriods: [...cur, period].sort((a,b)=>a.date.localeCompare(b.date)||(a.from||"").localeCompare(b.from||"")) }));
+              setNewDate(""); setNewFrom(""); setNewTo(""); setAllDay(true);
+            };
+            return (
+              <div>
+                <div style={{ display:"flex", gap:".4rem", flexWrap:"wrap", alignItems:"center", marginBottom:".5rem" }}>
+                  <input type="date" value={newDate} onChange={e=>setNewDate(e.target.value)}
+                    min={new Date().toISOString().slice(0,10)}
+                    style={{ flex:"1 1 130px", padding:".42rem .6rem", borderRadius:8, border:"1px solid var(--line)", background:"var(--bg)", color:"var(--ink)", fontSize:".82rem" }}
+                  />
+                  <label style={{ display:"flex", alignItems:"center", gap:".3rem", fontSize:".78rem", color:"var(--ink2)", cursor:"pointer", flexShrink:0 }}>
+                    <input type="checkbox" checked={allDay} onChange={e=>setAllDay(e.target.checked)} style={{ cursor:"pointer" }}/>
+                    整天
+                  </label>
+                </div>
+                {!allDay && (
+                  <div style={{ display:"flex", gap:".4rem", alignItems:"center", marginBottom:".5rem" }}>
+                    <select value={newFrom} onChange={e=>setNewFrom(e.target.value)}
+                      style={{ flex:1, padding:".42rem .5rem", borderRadius:8, border:"1px solid var(--line)", background:"var(--bg)", color:"var(--ink)", fontSize:".82rem" }}>
+                      <option value="">起始</option>
+                      {timeOpts.map(t=><option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <span style={{ color:"var(--ink3)", fontSize:".8rem" }}>至</span>
+                    <select value={newTo} onChange={e=>setNewTo(e.target.value)}
+                      style={{ flex:1, padding:".42rem .5rem", borderRadius:8, border:"1px solid var(--line)", background:"var(--bg)", color:"var(--ink)", fontSize:".82rem" }}>
+                      <option value="">結束</option>
+                      {timeOpts.map(t=><option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                )}
+                <button onClick={add}
+                  style={{ width:"100%", padding:".42rem", borderRadius:8, background:"var(--copper)",
+                    color:"#fff", border:"none", fontSize:".82rem", cursor:"pointer" }}>
+                  + 新增店休時段
+                </button>
+              </div>
+            );
+          })()}
+        </div>
+        {/* 清單 */}
+        {(local.closedPeriods||[]).length === 0 ? (
+          <div style={{ padding:".85rem 1.1rem", fontSize:".78rem", color:"var(--ink4)", textAlign:"center" }}>
+            尚未設定店休時段
+          </div>
+        ) : (
+          <div style={{ padding:".6rem .8rem", display:"flex", flexDirection:"column", gap:".35rem" }}>
+            {(local.closedPeriods||[]).map((p, idx) => (
+              <div key={idx} style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                padding:".3rem .75rem", borderRadius:8, background:"rgba(196,131,90,.07)",
+                border:"1px solid rgba(196,131,90,.2)", fontSize:".78rem", color:"var(--ink2)" }}>
+                <span>
+                  <b style={{ color:"var(--copper)" }}>{p.date}</b>
+                  {"　"}
+                  {p.from && p.to ? `${p.from} – ${p.to}` : "整天"}
+                </span>
+                <button onClick={()=>setLocal(q=>({
+                  ...q, closedPeriods:(q.closedPeriods||[]).filter((_,i)=>i!==idx)
+                }))} style={{ border:"none", background:"none", cursor:"pointer",
+                  color:"var(--ink4)", fontSize:".8rem", padding:"0 .2rem", lineHeight:1 }}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       <button onClick={handleSave} className="btn-copper"
         style={{ width:"100%", padding:".72rem", fontSize:".9rem" }}>
