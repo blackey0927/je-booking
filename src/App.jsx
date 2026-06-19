@@ -4626,7 +4626,7 @@ export default function SalonApp() {
   const customerMgr  = useCustomers();
   const adminAuth    = useAdminAuth();
   const stylistsMgr  = useStylists();
-  const STYLISTS     = stylistsMgr.stylists;
+  STYLISTS = stylistsMgr.stylists;
   const servicesMgr  = useServices();
   const svcPhotosMgr = useSvcPhotos();
   SERVICES = servicesMgr.services;
