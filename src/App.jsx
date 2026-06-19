@@ -2706,7 +2706,7 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, onEditBooking, isMob
   return (
     <div>
       {showManual && onAddBooking && (
-        <ManualBookingModal onBook={(b)=>{onAddBooking(b);setShowManual(false);}} onClose={()=>setShowManual(false)} bookings={bookings} stylistSettings={stylistSettings} isMobile={isMobile}/>
+        <ManualBookingModal onBook={(b)=>{onAddBooking(b);setShowManual(false);}} onClose={()=>setShowManual(false)} bookings={bookings} stylistSettings={stylistSettings} isMobile={isMobile} stylists={stylists}/>
       )}
 
       {/* Toolbar */}
@@ -2854,7 +2854,7 @@ function ScheduleView({ bookings, isMobile, stylistSettings, onAddBooking, styli
   return (
     <div>
       {showManualSched && onAddBooking && (
-        <ManualBookingModal onBook={(b)=>{onAddBooking(b);setShowManualSched(false);}} onClose={()=>setShowManualSched(false)} bookings={bookings} stylistSettings={stylistSettings} isMobile={isMobile}/>
+        <ManualBookingModal onBook={(b)=>{onAddBooking(b);setShowManualSched(false);}} onClose={()=>setShowManualSched(false)} bookings={bookings} stylistSettings={stylistSettings} isMobile={isMobile} stylists={stylists}/>
       )}
       {/* Date nav */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:"1rem", marginBottom:"1.2rem" }}>
