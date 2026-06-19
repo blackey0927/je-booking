@@ -199,6 +199,34 @@ function genCancelToken() {
   return Math.random().toString(36).slice(2,10) + Date.now().toString(36);
 }
 
+/* ── 「我的預約」裝置端記憶（localStorage）──
+   預約成功時記住 {id, cancelToken, ...}，讓顧客回到同一裝置/瀏覽器時
+   不用輸入任何資訊就能自動看到自己的預約與目前狀態 */
+const MY_BOOKINGS_KEY = "je_my_bookings";
+
+function loadMyBookingRefs() {
+  try {
+    const raw = window.localStorage.getItem(MY_BOOKINGS_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch (_) { return []; }
+}
+
+function saveMyBookingRef(entry) {
+  try {
+    const list = loadMyBookingRefs().filter(r => r.id !== entry.id);
+    list.unshift(entry); // 最新的放最前面
+    window.localStorage.setItem(MY_BOOKINGS_KEY, JSON.stringify(list.slice(0, 20)));
+  } catch (_) {}
+}
+
+function removeMyBookingRef(id) {
+  try {
+    const list = loadMyBookingRefs().filter(r => r.id !== id);
+    window.localStorage.setItem(MY_BOOKINGS_KEY, JSON.stringify(list));
+  } catch (_) {}
+}
+
 const ALL_SLOTS  = generateSlots(SALON.hours.open, SALON.hours.close, SALON.slotMinutes);
 
 // 檢查某日期的某時段是否在店休時段內
@@ -2432,6 +2460,9 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
             <button onClick={reset} className="btn-ghost" style={{ width:"100%", padding:".72rem 1rem" }}>
               再次預約
             </button>
+            <p style={{ fontSize:".78rem", color:"var(--ink3)", textAlign:"center", lineHeight:1.6, margin:0 }}>
+              💡 之後想確認預約狀態，隨時可至上方「<b>查詢預約</b>」頁籤查看
+            </p>
           </div>
 
           {/* ── 溫暖結尾：預約守則 Info Card ── */}
@@ -4427,10 +4458,152 @@ function CancelPage({ bookingId, cancelToken, onDone }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   我的預約 — 查詢卡片（共用渲染）
+═══════════════════════════════════════════════════════════ */
+function BookingMiniCard({ booking }) {
+  const svcNames = (booking.serviceIds||[booking.serviceId]).map(id=>SERVICES.find(s=>s.id===id)?.zh||id).filter(Boolean).join("・") || "—";
+  const stylist  = STYLISTS.find(s=>s.id===booking.stylistId);
+  const status   = booking.status || "pending";
+  const cancelUrl = booking.id && booking.cancelToken
+    ? `${window.location.origin}${window.location.pathname}?cancel=${booking.id}&token=${booking.cancelToken}`
+    : null;
+  const Tag = cancelUrl ? "a" : "div";
+
+  return (
+    <Tag {...(cancelUrl ? { href: cancelUrl } : {})}
+      style={{ display:"block", background:"var(--card)", border:"1px solid var(--line)", borderRadius:"var(--r-sm)", padding:"1rem 1.1rem", marginBottom:".7rem", textDecoration:"none", color:"inherit", cursor: cancelUrl?"pointer":"default" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:".6rem", marginBottom:".5rem" }}>
+        <div style={{ fontSize:".96rem", fontWeight:600, color:"var(--ink)" }}>{svcNames}</div>
+        <span style={{ flexShrink:0, padding:".15rem .6rem", borderRadius:20, fontSize:".72rem", fontWeight:600,
+          background:`rgba(${hexToRgb(STATUS_COLOR[status])},.12)`, color:STATUS_COLOR[status],
+          border:`1px solid rgba(${hexToRgb(STATUS_COLOR[status])},.3)` }}>
+          {STATUS_LABEL[status]}
+        </span>
+      </div>
+      <div style={{ display:"flex", flexWrap:"wrap", gap:".3rem 1rem", fontSize:".84rem", color:"var(--ink2)" }}>
+        <span>📅 {displayDate(booking.date)} {booking.time}</span>
+        <span>💈 {booking.needsAssignment ? "待店家安排" : (stylist?.name || booking.stylistId)}</span>
+        {booking.memberName && <span>👤 {booking.memberName}</span>}
+      </div>
+      {cancelUrl && (
+        <div style={{ marginTop:".55rem", fontSize:".78rem", color:"var(--copper)" }}>
+          {status==="cancelled" ? "查看詳情 →" : "查看詳情／取消預約 →"}
+        </div>
+      )}
+    </Tag>
+  );
+}
+
+function MyBookingsLookup({ isMobile }) {
+  const [deviceRefs]   = useState(() => loadMyBookingRefs());
+  const [deviceItems, setDeviceItems] = useState([]);
+  const [deviceState, setDeviceState] = useState(deviceRefs.length ? "loading" : "empty");
+
+  const [phone, setPhone] = useState("");
+  const [name, setName]   = useState("");
+  const [searchState, setSearchState] = useState("idle"); // idle|loading|done|notfound|error
+  const [results, setResults]         = useState([]);
+  const [searchErr, setSearchErr]     = useState("");
+
+  useEffect(() => {
+    if (!deviceRefs.length) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const db = await getFirebaseDB();
+        if (!db) { if(!cancelled) setDeviceState("error"); return; }
+        const { ref, get } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
+        const items = [];
+        for (const r of deviceRefs) {
+          try {
+            const snap = await get(ref(db, `je_bookings/${r.id}`));
+            if (snap.exists()) items.push({ ...snap.val(), id: r.id });
+            else removeMyBookingRef(r.id);
+          } catch(_) {}
+        }
+        if (cancelled) return;
+        items.sort((a,b)=> (b.date+b.time).localeCompare(a.date+a.time));
+        setDeviceItems(items);
+        setDeviceState(items.length ? "done" : "empty");
+      } catch(_) { if(!cancelled) setDeviceState("error"); }
+    })();
+    return () => { cancelled = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const runSearch = async () => {
+    const ph = phone.replace(/[-\s]/g, "");
+    const nm = name.trim();
+    if (!ph || !nm) return;
+    setSearchState("loading"); setSearchErr("");
+    try {
+      const db = await getFirebaseDB();
+      if (!db) { setSearchState("error"); setSearchErr("無法連接資料庫"); return; }
+      const { ref, get } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
+      const snap = await get(ref(db, "je_bookings"));
+      const all  = snap.exists() ? Object.entries(snap.val()).map(([id,v])=>({ ...v, id })) : [];
+      const matched = all.filter(b => {
+        const bp = (b.customerPhone||"").replace(/[-\s]/g, "");
+        const bn = b.customerName || "";
+        return bp && bp===ph && bn.includes(nm);
+      });
+      matched.sort((a,b)=> (b.date+b.time).localeCompare(a.date+a.time));
+      setResults(matched);
+      setSearchState(matched.length ? "done" : "notfound");
+    } catch(e) { setSearchState("error"); setSearchErr(e.message); }
+  };
+
+  const inputStyle = { width:"100%", padding:".7rem .9rem", borderRadius:"var(--r-sm)", border:"1px solid var(--line)", background:"var(--card)", fontSize:".92rem", color:"var(--ink)", fontFamily:"inherit" };
+  const canSearch = phone.trim() && name.trim();
+
+  return (
+    <div style={{ maxWidth:480, margin:"0 auto" }}>
+      <div style={{ textAlign:"center", marginBottom:"1.6rem" }}>
+        <h2 style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.5rem", fontWeight:500, color:"var(--ink)", marginBottom:".4rem" }}>查詢我的預約</h2>
+        <p style={{ fontSize:".86rem", color:"var(--ink3)" }}>確認預約時段、日期與目前狀態</p>
+      </div>
+
+      {deviceState==="loading" && (
+        <div style={{ textAlign:"center", padding:"1.2rem", color:"var(--ink3)", fontSize:".86rem" }}>載入中…</div>
+      )}
+      {deviceState==="done" && deviceItems.length>0 && (
+        <div style={{ marginBottom:"1.8rem" }}>
+          <div style={{ fontSize:".78rem", color:"var(--ink3)", marginBottom:".6rem", letterSpacing:".05em" }}>📱 這個裝置上的預約</div>
+          {deviceItems.map(b => <BookingMiniCard key={b.id} booking={b}/>)}
+        </div>
+      )}
+
+      <div style={{ background:"rgba(196,131,90,.04)", border:"1px solid var(--copper-bd)", borderRadius:"var(--r)", padding:"1.1rem 1.2rem" }}>
+        <div style={{ fontSize:".84rem", color:"var(--ink2)", marginBottom:".8rem", lineHeight:1.6 }}>
+          換裝置查詢，或想找回更早的預約？輸入<b>預約時填寫的手機號碼與姓名</b>即可查詢。
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:".6rem" }}>
+          <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="手機號碼" type="tel" inputMode="tel" style={inputStyle}/>
+          <input value={name} onChange={e=>setName(e.target.value)} placeholder="姓名" type="text" style={inputStyle}/>
+          <button onClick={runSearch} disabled={!canSearch}
+            style={{ padding:".75rem", borderRadius:"var(--r-sm)", border:"none", background:"var(--copper)", color:"#fff", fontSize:".92rem", fontWeight:600, cursor: canSearch?"pointer":"not-allowed", opacity: canSearch?1:.5 }}>
+            查詢預約
+          </button>
+        </div>
+
+        {searchState==="loading"  && <div style={{ textAlign:"center", padding:"1rem", color:"var(--ink3)", fontSize:".86rem" }}>查詢中…</div>}
+        {searchState==="notfound" && <div style={{ textAlign:"center", padding:"1rem", color:"var(--ink3)", fontSize:".86rem", lineHeight:1.6 }}>查無符合的預約紀錄，請確認手機號碼與姓名是否與預約時填寫的一致</div>}
+        {searchState==="error"    && <div style={{ textAlign:"center", padding:"1rem", color:"#c44a3a", fontSize:".86rem" }}>{searchErr}</div>}
+        {searchState==="done" && (
+          <div style={{ marginTop:"1rem" }}>
+            {results.map(b => <BookingMiniCard key={b.id} booking={b}/>)}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
    MAIN APP
 ═══════════════════════════════════════════════════════════ */
 const TABS = [
   { id:"book",      label:"預約",   icon:"📝" },
+  { id:"lookup",    label:"查詢預約", icon:"🔍" },
   { id:"calendar",  label:"行事曆", icon:"📅" },
   { id:"schedule",  label:"時刻表", icon:"⏰" },
   { id:"stylists",  label:"設計師", icon:"💈" },
@@ -4482,6 +4655,18 @@ export default function SalonApp() {
       const stylistName = stylist?.name || "";
       addBooking(booking);
       customerMgr.upsertFromBooking(booking, svcName, stylistName);
+
+      // ── 記住裝置上的預約，讓顧客之後免輸入即可查看狀態（僅限顧客線上自助預約）──
+      if (booking.id && booking.cancelToken && (booking.source === "online" || booking.isGroup)) {
+        saveMyBookingRef({
+          id: booking.id,
+          cancelToken: booking.cancelToken,
+          phone: booking.customerPhone || "",
+          name: booking.memberName || booking.customerName || "",
+          date: booking.date, time: booking.time,
+          createdAt: Date.now(),
+        });
+      }
 
       // ── 預約成功立即通知店主（僅限線上預約）──
       const webhookUrl = lineSettings?.webhookUrl;
@@ -4729,6 +4914,7 @@ export default function SalonApp() {
           ? <div style={{ textAlign:"center", padding:"4rem 1rem", color:"#999999", fontSize:"1.32rem" }}>載入中…</div>
           : <>
               {tab==="book"     && <ErrorBoundary><BookingFlow bookings={bookings} onBook={handleBook} isMobile={isMobile} stylistSettings={stylistMgr.settings} stylists={STYLISTS} services={SERVICES} svcPhotos={svcPhotosMgr.photos} salonConfig={salonConfig} adminAuth={adminAuth} salonSettings={salonSettings}/></ErrorBoundary>}
+              {tab==="lookup"   && <ErrorBoundary><MyBookingsLookup isMobile={isMobile}/></ErrorBoundary>}
               {tab==="services" && <ServicesMenu isMobile={isMobile} servicesMgr={adminAuth.unlocked ? servicesMgr : null} svcPhotosMgr={adminAuth.unlocked ? svcPhotosMgr : null} svcPhotos={svcPhotosMgr.photos}/>}
               {ADMIN_TABS.has(tab) && (
                 adminAuth.unlocked
