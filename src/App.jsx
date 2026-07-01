@@ -29,9 +29,9 @@ const SALON = {
   // 每日營業時間（分鐘制）: 0=日 1=一 2=二 3=三 4=四 5=五 6=六
   dayHours: {
     0: { open:600, close:1200 },   // 日 10:00-20:00
-    1: { open:600, close:1170 },   // 一 10:00-19:30
-    2: { open:600, close:1170 },   // 二 10:00-19:30
-    3: { open:600, close:1170 },   // 三 10:00-19:30
+    1: { open:600, close:1260 },   // 一 10:00-21:00
+    2: { open:600, close:1260 },   // 二 10:00-21:00
+    3: { open:600, close:1260 },   // 三 10:00-21:00
     4: { open:600, close:1260 },   // 四 10:00-21:00
     5: { open:600, close:1260 },   // 五 10:00-21:00
     6: { open:600, close:1260 },   // 六 10:00-21:00
@@ -72,7 +72,7 @@ const DEFAULT_STYLISTS = [
     id:"kai",    name:"Nancy",  title:"剪髮設計師", photo:null,
     icon:"👨‍🎨", exp:"6年",    specialty:["男子剪髮","女子剪髮","修瀏海","修眉","一般沖洗","精緻洗髮","SPA洗","燙髮","染髮","護髮"],
     color:"#a0c4b8", bio:"刀工精準俐落，男士 Fade 刀法專家，也擅長女士俐落短髮造型。",
-    workDays:[1,3,4,5,6,0],
+    workDays:[1,3,4,5,6,0], workHours:{ open:600, close:1200 }, // 10:00-20:00
   },
   {
     id:"yu",     name:"Yuriliey",  title:"燙髮・護髮師", photo:null,
@@ -146,6 +146,20 @@ function displayDate(d) {
 function getDayHours(date) {
   const d = typeof date === "string" ? parseDate(date) : date;
   return (SALON.dayHours && SALON.dayHours[d.getDay()]) || { open:600, close:1260 };
+}
+
+// 取設計師在指定日期的有效工作時段（店家當日時段 ∩ 設計師個人時段）
+// stylistSettings 來自 useStylistSettings.settings（je_stylist_sched）
+function getStylistDayHours(stylistId, date, stylistSettings) {
+  const dh = getDayHours(date);
+  // je_stylist_sched 的 workHours 優先，其次看設計師資料的 workHours，最後 fallback 到店家時段
+  const st = STYLISTS.find(s => s.id === stylistId);
+  const wh = stylistSettings?.[stylistId]?.workHours ?? st?.workHours ?? null;
+  if (!wh) return dh;
+  return {
+    open:  Math.max(dh.open,  wh.open),
+    close: Math.min(dh.close, wh.close),
+  };
 }
 function minsToTime(m) {
   return String(Math.floor(m/60)).padStart(2,"0") + ":" + String(m%60).padStart(2,"0");
@@ -617,6 +631,14 @@ function useStylistSettings() {
     });
   };
 
+  const setWorkHours = (id, hours) => {
+    setSettings(prev => {
+      const next = { ...prev, [id]: { ...(prev[id]||{}), workHours: hours } };
+      saveSchedule(next);
+      return next;
+    });
+  };
+
   const addHoliday = (id, dateStr) => {
     setSettings(prev => {
       const cur = prev[id]?.holidays || [];
@@ -637,12 +659,13 @@ function useStylistSettings() {
   };
 
   const getEffective = (stylist) => ({
-    photo:    settings[stylist.id]?.photo    ?? null,
-    workDays: settings[stylist.id]?.workDays ?? stylist.workDays,
-    holidays: settings[stylist.id]?.holidays ?? [],
+    photo:      settings[stylist.id]?.photo    ?? null,
+    workDays:   settings[stylist.id]?.workDays ?? stylist.workDays,
+    holidays:   settings[stylist.id]?.holidays ?? [],
+    workHours:  settings[stylist.id]?.workHours ?? stylist.workHours ?? null,
   });
 
-  return { settings, photosLoaded, setPhoto, setWorkDays, addHoliday, removeHoliday, getEffective };
+  return { settings, photosLoaded, setPhoto, setWorkDays, setWorkHours, addHoliday, removeHoliday, getEffective };
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -1346,7 +1369,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
     if (!m.stylist || !m.date || !m.services?.length) return [];
     const dur     = memberDuration(m);
     const dateObj = typeof m.date === "string" ? parseDate(m.date) : m.date;
-    const dh      = getDayHours(dateObj);
+    const dh      = getStylistDayHours(m.stylist, dateObj, stylistSettings);
     const todayStr = formatDate(new Date());
     const isToday  = m.date === todayStr;
     const nowMins  = isToday ? new Date().getHours()*60+new Date().getMinutes() : 0;
@@ -1395,14 +1418,21 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
         if (minStartMins > 0 && slotMins < minStartMins) return false;
         if (isToday && slotMins < nowMins + 15) return false;
         if (isSlotClosedByPeriod(formatDate(sel.date), slot, totalDuration, salonSettings.closedPeriods)) return false;
-        return available.some(st => isSlotAvailable(slot, st.id, date, bookings, totalDuration));
+        // 每位設計師各自以本人時段判斷
+        return available.some(st => {
+          const stDh = getStylistDayHours(st.id, date, stylistSettings);
+          if (slotMins < stDh.open || slotMins + totalDuration > stDh.close) return false;
+          return isSlotAvailable(slot, st.id, date, bookings, totalDuration);
+        });
       });
     }
 
+    // ── 指定設計師：以設計師個人時段為準 ──
+    const sDh = getStylistDayHours(sel.stylist, sel.date, stylistSettings);
     return HOUR_SLOTS.filter(slot => {
       const slotMins = slotToMinutes(slot);
-      if (slotMins < dh.open) return false;
-      if (slotMins + totalDuration > dh.close) return false;
+      if (slotMins < sDh.open) return false;
+      if (slotMins + totalDuration > sDh.close) return false;
       if (minStartMins > 0 && slotMins < minStartMins) return false;
       if (isToday && slotMins < nowMins + 15) return false;
       if (isSlotClosedByPeriod(formatDate(sel.date), slot, totalDuration, salonSettings.closedPeriods)) return false;
@@ -2521,8 +2551,9 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
   const slots = useMemo(() => {
     if (!form.serviceIds.length || !form.stylistId || !form.date) return [];
     return ALL_SLOTS.filter(slot => {
-      const sm = slotToMinutes(slot);
-      if (sm < dh.open || sm + totalDurM > dh.close) return false;
+      const sm  = slotToMinutes(slot);
+      const sDh = getStylistDayHours(form.stylistId, parseDate(form.date), stylistSettings);
+      if (sm < sDh.open || sm + totalDurM > sDh.close) return false;
       return isSlotAvailable(slot, form.stylistId, parseDate(form.date), bookings, totalDurM);
     });
   }, [form.serviceIds, form.stylistId, form.date, bookings, dh, totalDurM]);
@@ -3309,6 +3340,59 @@ function StylistRoster({ bookings, isMobile, stylistMgr, stylistsMgr }) {
                       );
                     })}
                   </div>
+                </div>
+
+                {/* Work hours */}
+                <div style={{ padding:".5rem .75rem", borderBottom:"1px solid var(--line)" }}>
+                  <div style={{ fontSize:".6rem", letterSpacing:".16em", color:"var(--ink3)", textTransform:"uppercase", marginBottom:".35rem" }}>
+                    上班時段
+                  </div>
+                  {isEditing ? (
+                    <div style={{ display:"flex", alignItems:"center", gap:".45rem", flexWrap:"wrap" }}>
+                      {[
+                        { label:"開始", key:"open",  current: eff.workHours?.open  ?? "" },
+                        { label:"結束", key:"close", current: eff.workHours?.close ?? "" },
+                      ].map(({label,key,current},fi)=>(
+                        <React.Fragment key={key}>
+                          {fi > 0 && <span style={{ color:"var(--ink4)", fontSize:".84rem" }}>～</span>}
+                          <select
+                            value={current}
+                            onChange={e => {
+                              const val = e.target.value === "" ? null : Number(e.target.value);
+                              const cur = eff.workHours ?? {};
+                              if (val === null) {
+                                // 清除兩端 → 刪除 workHours
+                                stylistMgr?.setWorkHours(st.id, null);
+                              } else {
+                                stylistMgr?.setWorkHours(st.id, {
+                                  open:  key==="open"  ? val : (cur.open  ?? 600),
+                                  close: key==="close" ? val : (cur.close ?? 1260),
+                                });
+                              }
+                            }}
+                            style={{ padding:".28rem .5rem", border:"1px solid var(--line)", borderRadius:6, fontSize:".84rem", background:"var(--card)", color:"var(--ink)", cursor:"pointer" }}>
+                            <option value="">依店家</option>
+                            {Array.from({length:27},(_,i)=>540+i*30).map(m=>(
+                              <option key={m} value={m}>{minsToTime(m)}</option>
+                            ))}
+                          </select>
+                        </React.Fragment>
+                      ))}
+                      {eff.workHours && (
+                        <button onClick={()=>stylistMgr?.setWorkHours(st.id, null)}
+                          style={{ padding:".18rem .5rem", border:"1px solid var(--line)", borderRadius:20, fontSize:".7rem", color:"var(--ink3)", background:"transparent", cursor:"pointer" }}>
+                          重設
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize:".82rem", color:"var(--ink2)", fontWeight:500 }}>
+                      {eff.workHours
+                        ? `${minsToTime(eff.workHours.open)} ～ ${minsToTime(eff.workHours.close)}`
+                        : <span style={{ color:"var(--ink4)", fontSize:".78rem" }}>依店家營業時段</span>
+                      }
+                    </div>
+                  )}
                 </div>
 
                 {/* Holiday viewer */}
