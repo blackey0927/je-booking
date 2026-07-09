@@ -2957,7 +2957,15 @@ function ScheduleView({ bookings, isMobile, stylistSettings, onAddBooking, styli
                 {/* 姓名 + 狀態 */}
                 <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:isMobile?".3rem .4rem":".4rem .55rem" }}>
                   <div style={{ fontSize:isMobile?".7rem":".8rem", fontWeight:600, color:"#fff", textShadow:"0 1px 3px rgba(0,0,0,.5)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{st.name}</div>
-                  {!isWorkToday && (
+                  {isWorkToday ? (() => {
+                    const stDh = getStylistDayHours(st.id, viewDate, stylistSettings);
+                    const salonDh = getDayHours(viewDate);
+                    // 只在設計師時段與店家時段不同時才顯示（有個人時段設定）
+                    const hasCustom = stDh.open !== salonDh.open || stDh.close !== salonDh.close;
+                    return hasCustom
+                      ? <div style={{ fontSize:".58rem", color:"rgba(200,255,200,.85)", letterSpacing:".04em" }}>{minsToTime(stDh.open)}–{minsToTime(stDh.close)}</div>
+                      : null;
+                  })() : (
                     <div style={{ fontSize:".58rem", color:"rgba(255,200,150,.8)", letterSpacing:".04em" }}>休假</div>
                   )}
                 </div>
@@ -2979,13 +2987,25 @@ function ScheduleView({ bookings, isMobile, stylistSettings, onAddBooking, styli
                   const svcList = booking ? getBookingSvcs(booking, SERVICES) : [];
                   const svc     = svcList[0] || null;
                   const isOff   = !isStylistAvailable(st, viewDate, stylistSettings);
+                  // 設計師個人上班時段之外（非整天休假，但超出本人工時）
+                  const stDh    = !isOff ? getStylistDayHours(st.id, viewDate, stylistSettings) : null;
+                  const sm      = slotToMinutes(slot);
+                  const isOutsideHours = !isOff && stDh
+                    && (sm < stDh.open || sm + SALON.slotMinutes > stDh.close);
                   return (
                     <div key={st.id} style={{
                       padding:".2rem .25rem", borderLeft:"1px solid rgba(0,0,0,.04)",
-                      background: isOff?"var(--bg2)":booking?`rgba(${hexToRgb(st.color)},.1)`:"transparent",
+                      background: isOff
+                        ? "var(--bg2)"
+                        : isOutsideHours
+                          ? `rgba(${hexToRgb(st.color||"#c4835a")},.04)`
+                          : booking
+                            ? `rgba(${hexToRgb(st.color)},.1)`
+                            : "transparent",
                       overflow:"hidden",
                     }}>
                       {isOff && !booking && <div style={{ fontSize:".70rem", color:"#cccccc", textAlign:"center", marginTop:".3rem" }}>休</div>}
+                      {isOutsideHours && !booking && <div style={{ fontSize:".62rem", color:`rgba(${hexToRgb(st.color||"#c4835a")},.22)`, textAlign:"center", marginTop:".3rem", letterSpacing:".08em" }}>—</div>}
                       {booking && (
                         <div style={{ fontSize:".64rem", color:st.color, lineHeight:1.4 }}>
                           <div style={{ fontWeight:600 }}>{svcList.map(s=>s.zh).join("・") || svc?.zh}</div>
@@ -3200,7 +3220,7 @@ function StylistRoster({ bookings, isMobile, stylistMgr, stylistsMgr }) {
           const todayCount   = bookings.filter(b=>b.stylistId===st.id&&b.date===todayStr&&b.status!=="cancelled").length;
           const totalCount   = bookings.filter(b=>b.stylistId===st.id&&b.status!=="cancelled").length;
           const isEditing    = editId === st.id;
-          const upcomingHols = eff.holidays.filter(d => d >= todayStr).slice(0, 5);
+          const upcomingHols = eff.holidays.filter(d => d >= todayStr);
 
           const handlePhotoUpload = (e) => {
             const file = e.target.files[0];
