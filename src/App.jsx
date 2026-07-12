@@ -40,6 +40,16 @@ const SALON = {
   slotMinutes: 15,
 };
 
+// ── 設計師連動排班規則（依另一位設計師是否上班決定工時）──
+// whenPresent：被連動設計師上班時的工時；whenAbsent：休假時的工時
+const STYLIST_LINKED_HOURS = {
+  "kai": {                                     // Nancy 依闆娘 (mei) 出勤決定工時
+    linkedStylistId: "mei",
+    whenPresent: { open: 660, close: 1260 },  // 闆娘上班 → Nancy 11:00-21:00
+    whenAbsent:  { open: 600, close: 1200 },  // 闆娘休假 → Nancy 10:00-20:00
+  },
+};
+
 const DEFAULT_SERVICES = [
   { id:"cut_male",   zh:"男子剪髮",  en:"Men's Haircut",    icon:"✂️", duration:15,  price:"$180",  priceNote:"",   category:"基本", color:"#a0c4b8", desc:"男士精緻剪裁，Fade 刀法、造型設計" },
   { id:"rinse",      zh:"一般沖洗",  en:"Rinse",            icon:"🚿", duration:5,   price:"$50",   priceNote:"",   category:"基本", color:"#7a9aaa", desc:"沖洗頭髮，藥後沖洗使用" },
@@ -72,7 +82,7 @@ const DEFAULT_STYLISTS = [
     id:"kai",    name:"Nancy",  title:"剪髮設計師", photo:null,
     icon:"👨‍🎨", exp:"6年",    specialty:["男子剪髮","女子剪髮","修瀏海","修眉","一般沖洗","精緻洗髮","SPA洗","燙髮","染髮","護髮"],
     color:"#a0c4b8", bio:"刀工精準俐落，男士 Fade 刀法專家，也擅長女士俐落短髮造型。",
-    workDays:[1,3,4,5,6,0], workHours:{ open:600, close:1200 }, // 10:00-20:00
+    workDays:[1,3,4,5,6,0], // 上班時段由 STYLIST_LINKED_HOURS 依闆娘出勤連動
   },
   {
     id:"yu",     name:"Yuriliey",  title:"燙髮・護髮師", photo:null,
@@ -152,14 +162,23 @@ function getDayHours(date) {
 // stylistSettings 來自 useStylistSettings.settings（je_stylist_sched）
 function getStylistDayHours(stylistId, date, stylistSettings) {
   const dh = getDayHours(date);
-  // je_stylist_sched 的 workHours 優先，其次看設計師資料的 workHours，最後 fallback 到店家時段
   const st = STYLISTS.find(s => s.id === stylistId);
+
+  // ── 優先：連動規則（je_stylist_sched 設定 > STYLIST_LINKED_HOURS 預設值）──
+  const linked = stylistSettings?.[stylistId]?.linkedHours ?? STYLIST_LINKED_HOURS[stylistId] ?? null;
+  if (linked) {
+    const linkedSt = STYLISTS.find(s => s.id === linked.linkedStylistId);
+    if (linkedSt) {
+      const isLinkedPresent = isStylistAvailable(linkedSt, date, stylistSettings);
+      const wh = isLinkedPresent ? linked.whenPresent : linked.whenAbsent;
+      if (wh) return { open: Math.max(dh.open, wh.open), close: Math.min(dh.close, wh.close) };
+    }
+  }
+
+  // ── 次要：靜態個人時段（je_stylist_sched 設定 > DEFAULT_STYLISTS 預設）──
   const wh = stylistSettings?.[stylistId]?.workHours ?? st?.workHours ?? null;
   if (!wh) return dh;
-  return {
-    open:  Math.max(dh.open,  wh.open),
-    close: Math.min(dh.close, wh.close),
-  };
+  return { open: Math.max(dh.open, wh.open), close: Math.min(dh.close, wh.close) };
 }
 function minsToTime(m) {
   return String(Math.floor(m/60)).padStart(2,"0") + ":" + String(m%60).padStart(2,"0");
@@ -659,10 +678,11 @@ function useStylistSettings() {
   };
 
   const getEffective = (stylist) => ({
-    photo:      settings[stylist.id]?.photo    ?? null,
-    workDays:   settings[stylist.id]?.workDays ?? stylist.workDays,
-    holidays:   settings[stylist.id]?.holidays ?? [],
-    workHours:  settings[stylist.id]?.workHours ?? stylist.workHours ?? null,
+    photo:       settings[stylist.id]?.photo     ?? null,
+    workDays:    settings[stylist.id]?.workDays  ?? stylist.workDays,
+    holidays:    settings[stylist.id]?.holidays  ?? [],
+    workHours:   settings[stylist.id]?.workHours ?? stylist.workHours ?? null,
+    linkedHours: settings[stylist.id]?.linkedHours ?? STYLIST_LINKED_HOURS[stylist.id] ?? null,
   });
 
   return { settings, photosLoaded, setPhoto, setWorkDays, setWorkHours, addHoliday, removeHoliday, getEffective };
@@ -3408,11 +3428,38 @@ function StylistRoster({ bookings, isMobile, stylistMgr, stylistsMgr }) {
                       )}
                     </div>
                   ) : (
-                    <div style={{ fontSize:".82rem", color:"var(--ink2)", fontWeight:500 }}>
-                      {eff.workHours
-                        ? `${minsToTime(eff.workHours.open)} ～ ${minsToTime(eff.workHours.close)}`
-                        : <span style={{ color:"var(--ink4)", fontSize:".78rem" }}>依店家營業時段</span>
-                      }
+                    <div style={{ display:"flex", flexDirection:"column", gap:".22rem" }}>
+                      {eff.linkedHours ? (() => {
+                        const linkedName = STYLISTS.find(s => s.id === eff.linkedHours.linkedStylistId)?.name ?? "—";
+                        const todayEff   = getStylistDayHours(st.id, today, stylistMgr?.settings);
+                        const meiOnToday = isStylistAvailable(
+                          STYLISTS.find(s => s.id === eff.linkedHours.linkedStylistId) || {},
+                          today, stylistMgr?.settings
+                        );
+                        return (
+                          <>
+                            <div style={{ fontSize:".82rem", color:"var(--copper)", fontWeight:600 }}>
+                              🔗 依{linkedName}排班連動
+                            </div>
+                            <div style={{ fontSize:".75rem", color:"var(--ink3)", lineHeight:1.7 }}>
+                              {linkedName}上班：{minsToTime(eff.linkedHours.whenPresent.open)}～{minsToTime(eff.linkedHours.whenPresent.close)}<br/>
+                              {linkedName}休假：{minsToTime(eff.linkedHours.whenAbsent.open)}～{minsToTime(eff.linkedHours.whenAbsent.close)}
+                            </div>
+                            <div style={{ fontSize:".76rem", fontWeight:600, color:"var(--ink2)", marginTop:".05rem" }}>
+                              今日：{minsToTime(todayEff.open)}～{minsToTime(todayEff.close)}
+                              <span style={{ fontWeight:400, color:"var(--ink4)", marginLeft:".4rem" }}>
+                                （{linkedName}{meiOnToday?"上班":"休假"}）
+                              </span>
+                            </div>
+                          </>
+                        );
+                      })() : eff.workHours ? (
+                        <div style={{ fontSize:".82rem", color:"var(--ink2)", fontWeight:500 }}>
+                          {minsToTime(eff.workHours.open)} ～ {minsToTime(eff.workHours.close)}
+                        </div>
+                      ) : (
+                        <span style={{ color:"var(--ink4)", fontSize:".78rem" }}>依店家營業時段</span>
+                      )}
                     </div>
                   )}
                 </div>
