@@ -1450,7 +1450,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
   const confirmBook = () => {
     if (bookMode === "group") {
       const groupId = "grp_" + Date.now();
-      const doneList = members.map(m => ({
+      const doneList = members.map((m, idx) => ({
         groupId,
         groupSize: members.length,
         serviceId:  m.services[0] || "",
@@ -1462,6 +1462,8 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
         customerPhone: form.phone, lineId: form.lineId,
         notes: form.notes ? form.notes + "（家庭預約）" : "家庭預約",
         isGroup: true,
+        isGroupPrimary: idx === 0,   // 只有第一筆成員觸發 LINE 通知
+        source: "online",            // 修正：家庭預約需觸發通知流程
         id: genId(), cancelToken: genCancelToken(),
       }));
       doneList.forEach(b => onBook(b));
@@ -4772,19 +4774,23 @@ export default function SalonApp() {
         });
       }
 
-      // ── 預約成功立即通知店主（僅限線上預約）──
+      // ── 預約成功立即通知店主（線上預約；家庭預約只發第一筆成員的通知）──
       const webhookUrl = lineSettings?.webhookUrl;
-      if (webhookUrl && booking.source === "online") {
+      if (webhookUrl && booking.source === "online" && (!booking.isGroup || booking.isGroupPrimary)) {
         // 取得 base URL：移除結尾的 /notify, /notify-new, /webhook 等路徑
         const baseUrl = webhookUrl.replace(/\/(notify(-new|-cancel)?|webhook)\/?$/i, "");
         const cancelUrl = booking.id && booking.cancelToken
           ? `${window.location.origin}${window.location.pathname}?cancel=${booking.id}&token=${booking.cancelToken}`
           : null;
         try {
+          // 家庭預約：在 svcName 前面標記成員數，讓店主一眼看出
+          const notifySvcName = booking.isGroup
+            ? `【家庭預約・${booking.groupSize}人】 ${svcName}（${booking.memberName} 的服務）`
+            : svcName;
           const res = await fetch(`${baseUrl}/notify-new`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ booking, svcName, stylistName, cancelUrl }),
+            body: JSON.stringify({ booking, svcName: notifySvcName, stylistName, cancelUrl }),
           });
           if (!res.ok) {
             const text = await res.text().catch(()=>"");
