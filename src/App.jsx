@@ -3840,6 +3840,31 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
     setTimeout(() => setLineStatus(null), 3500);
   };
 
+  // 補發「店主通知」（呼叫 /notify-new，與自動通知相同路徑）
+  const handleResendAdminNotify = async () => {
+    if (!lineSettings?.webhookUrl) return;
+    setLineStatus("sending");
+    try {
+      const baseUrl   = lineSettings.webhookUrl.replace(/\/(notify(-new|-cancel)?|webhook)\/?$/i, "");
+      const svcs      = getBookingSvcs(booking, SERVICES);
+      const svcName   = svcs.map(s=>s.zh).join("・") || booking.serviceId || "";
+      const cancelUrl = booking.id && booking.cancelToken
+        ? `${window.location.origin}${window.location.pathname}?cancel=${booking.id}&token=${booking.cancelToken}`
+        : null;
+      const res = await fetch(`${baseUrl}/notify-new`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ booking, svcName, stylistName: st?.name || "", cancelUrl }),
+      });
+      if (res.ok) {
+        setLineStatus("ok"); setLineMsg("已補發店主通知");
+      } else {
+        const t = await res.text().catch(()=>"");
+        setLineStatus("err"); setLineMsg(`HTTP ${res.status} ${t.slice(0,60)}`);
+      }
+    } catch(e) { setLineStatus("err"); setLineMsg(e.message); }
+    setTimeout(() => setLineStatus(null), 4000);
+  };
+
   // ── 編輯模式 ──────────────────────────────────────────
   if (editing) {
     const iStyle = { width:"100%", padding:".45rem .6rem", border:"1px solid var(--line)", borderRadius:6, fontSize:".84rem", color:"var(--ink)", background:"var(--card)", outline:"none" };
@@ -3985,6 +4010,7 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
       {/* LINE Notify row */}
       {!confirm && lineSettings?.webhookUrl && (
         <div style={{ padding:".45rem .9rem", borderTop:"1px solid rgba(6,199,85,.08)", display:"flex", alignItems:"center", gap:".4rem", flexWrap:"wrap", background:"#f5fbf7" }}>
+          {/* 客戶通知按鈕（需要 lineId）*/}
           <span style={{ fontSize:".70rem", color:"rgba(6,199,85,.6)" }}>💬 LINE通知</span>
           {["confirm","reminder","cancel"].map(type=>{
             const labels = { confirm:"✓ 確認通知", reminder:"⏰ 提醒通知", cancel:"✕ 取消通知" };
@@ -3998,8 +4024,33 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
               </button>
             );
           })}
+
+          {/* 店主通知狀態 + 補發（線上預約才顯示）*/}
+          {booking.source === "online" && (
+            <>
+              <span style={{ color:"rgba(0,0,0,.15)", margin:"0 .1rem", fontSize:".8rem" }}>｜</span>
+              {booking.notifyAdmin === true && (
+                <span style={{ fontSize:".70rem", color:"#06C755", display:"flex", alignItems:"center", gap:".2rem" }}>
+                  🔔 店主已通知
+                </span>
+              )}
+              {booking.notifyAdmin === false && (
+                <button onClick={handleResendAdminNotify} disabled={lineStatus==="sending"}
+                  style={{ ...actionBtn, borderColor:"rgba(196,131,90,.5)", color:"var(--copper)", fontWeight:600 }}>
+                  🔔 補發店主通知
+                </button>
+              )}
+              {booking.notifyAdmin === undefined && (
+                <button onClick={handleResendAdminNotify} disabled={lineStatus==="sending"}
+                  style={{ ...actionBtn, borderColor:"rgba(196,131,90,.3)", color:"#b09080" }}>
+                  🔔 店主通知
+                </button>
+              )}
+            </>
+          )}
+
           {lineStatus==="sending" && <span style={{ fontSize:".84rem", color:"rgba(6,199,85,.7)" }}>發送中…</span>}
-          {lineStatus==="ok"      && <span style={{ fontSize:".84rem", color:"#06C755" }}>✓ 已發送</span>}
+          {lineStatus==="ok"      && <span style={{ fontSize:".84rem", color:"#06C755" }}>✓ {lineMsg||"已發送"}</span>}
           {lineStatus==="err"     && <span style={{ fontSize:".84rem", color:"#c4a0a0" }}>✕ {lineMsg}</span>}
         </div>
       )}
@@ -4463,17 +4514,17 @@ function LINESettingsView({ settings, onSave, bookings, isMobile, adminAuth }) {
         <div style={{ padding:".65rem 1rem", borderBottom:"1px solid rgba(0,0,0,.05)", fontSize:".86rem", letterSpacing:".15em", color:"#666666", textTransform:"uppercase" }}>運作流程</div>
         <div style={{ padding:".9rem 1rem" }}>
           {[
-            { step:"1", icon:"📱", title:"顧客預約時填入 LINE ID", desc:"預約表單新增選填欄位「LINE ID」（@xxxxxx 格式），顧客自願填寫" },
-            { step:"2", icon:"🔗", title:"管理後台點擊通知按鈕", desc:"在行事曆或管理頁面，每張預約卡片底部有「確認通知 / 提醒通知 / 取消通知」三個按鈕" },
-            { step:"3", icon:"🖥", title:"Webhook 中繼至 LINE", desc:"請求送至你部署的 line-server.js，由伺服器端以 Channel Access Token 呼叫 LINE Messaging API" },
-            { step:"4", icon:"💬", title:"顧客 LINE 收到 Flex Message", desc:"顧客的 LINE 收到精美的確認卡片，含服務/設計師/時間/費用資訊" },
+            { step:"1", icon:"🔔", title:"顧客線上預約 → 自動通知店主", desc:"顧客完成線上預約時，系統自動呼叫 /notify-new 推播給店家管理人員。此通知與顧客是否加入官方帳號完全無關，失敗時會自動重試一次。", highlight: true },
+            { step:"2", icon:"📱", title:"顧客可選填 LINE ID（顧客通知用）", desc:"預約表單的「LINE ID」欄位（選填）。顧客加入官方帳號後，點選個人資料可取得 U 開頭的 userId。只有填寫後才能收到下方確認/提醒/取消通知。" },
+            { step:"3", icon:"✉️", title:"管理後台手動推播給顧客", desc:"行事曆每張預約卡底部有「確認通知 / 提醒通知 / 取消通知」，點擊後推播 Flex Message 給顧客 LINE。需要顧客已填寫 LINE ID 才有效。" },
+            { step:"4", icon:"🖥", title:"Webhook 中繼至 LINE", desc:"請求送至你部署的 Vercel API Routes，由伺服器以 Channel Access Token 呼叫 LINE Messaging API。" },
           ].map(s=>(
-            <div key={s.step} style={{ display:"flex", gap:".7rem", alignItems:"flex-start", marginBottom:".75rem" }}>
-              <div style={{ width:26, height:26, borderRadius:"50%", background:"rgba(6,199,85,.1)", border:"1px solid rgba(6,199,85,.25)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:".86rem", color:"#06C755", flexShrink:0 }}>{s.step}</div>
+            <div key={s.step} style={{ display:"flex", gap:".7rem", alignItems:"flex-start", marginBottom:".75rem", padding: s.highlight ? ".5rem .6rem" : "0", background: s.highlight ? "rgba(6,199,85,.05)" : "transparent", borderRadius: s.highlight ? 6 : 0, border: s.highlight ? "1px solid rgba(6,199,85,.15)" : "none" }}>
+              <div style={{ width:26, height:26, borderRadius:"50%", background:s.highlight?"rgba(6,199,85,.2)":"rgba(6,199,85,.1)", border:`1px solid rgba(6,199,85,${s.highlight?.35:.25})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:".86rem", color:"#06C755", flexShrink:0 }}>{s.step}</div>
               <div>
                 <div style={{ display:"flex", alignItems:"center", gap:".4rem", marginBottom:".18rem" }}>
                   <span>{s.icon}</span>
-                  <span style={{ fontSize:"1.32rem", fontWeight:600, color:"var(--ink)" }}>{s.title}</span>
+                  <span style={{ fontSize:"1.32rem", fontWeight:600, color: s.highlight ? "#06C755" : "var(--ink)" }}>{s.title}</span>
                 </div>
                 <div style={{ fontSize:"1.32rem", color:"#777777", lineHeight:1.65 }}>{s.desc}</div>
               </div>
@@ -4824,27 +4875,40 @@ export default function SalonApp() {
       // ── 預約成功立即通知店主（線上預約；家庭預約只發第一筆成員的通知）──
       const webhookUrl = lineSettings?.webhookUrl;
       if (webhookUrl && booking.source === "online" && (!booking.isGroup || booking.isGroupPrimary)) {
-        // 取得 base URL：移除結尾的 /notify, /notify-new, /webhook 等路徑
         const baseUrl = webhookUrl.replace(/\/(notify(-new|-cancel)?|webhook)\/?$/i, "");
         const cancelUrl = booking.id && booking.cancelToken
           ? `${window.location.origin}${window.location.pathname}?cancel=${booking.id}&token=${booking.cancelToken}`
           : null;
-        try {
-          // 家庭預約：在 svcName 前面標記成員數，讓店主一眼看出
-          const notifySvcName = booking.isGroup
-            ? `【家庭預約・${booking.groupSize}人】 ${svcName}（${booking.memberName} 的服務）`
-            : svcName;
+        const notifySvcName = booking.isGroup
+          ? `【家庭預約・${booking.groupSize}人】 ${svcName}（${booking.memberName} 的服務）`
+          : svcName;
+        const payload = { booking, svcName: notifySvcName, stylistName, cancelUrl };
+
+        // 通知店主 helper（回傳 true/false）
+        const doNotifyAdmin = async () => {
           const res = await fetch(`${baseUrl}/notify-new`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ booking, svcName: notifySvcName, stylistName, cancelUrl }),
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
           });
-          if (!res.ok) {
-            const text = await res.text().catch(()=>"");
-            console.warn(`[notify-new] HTTP ${res.status}:`, text);
-          }
-        } catch(fetchErr) {
-          console.warn("[notify-new] fetch 失敗:", fetchErr.message);
+          if (!res.ok) { const t = await res.text().catch(()=>""); throw new Error(`HTTP ${res.status}: ${t.slice(0,120)}`); }
+          return true;
+        };
+
+        // 第一次嘗試，失敗後等 4 秒自動重試一次
+        try {
+          await doNotifyAdmin();
+          updateBooking(booking.id, { notifyAdmin: true });
+        } catch (firstErr) {
+          console.warn("[notify-new] 初次失敗，4秒後重試:", firstErr.message);
+          setTimeout(async () => {
+            try {
+              await doNotifyAdmin();
+              updateBooking(booking.id, { notifyAdmin: true });
+            } catch (retryErr) {
+              console.warn("[notify-new] 重試仍失敗，請手動補發:", retryErr.message);
+              updateBooking(booking.id, { notifyAdmin: false });
+            }
+          }, 4000);
         }
       }
     } catch (e) {
