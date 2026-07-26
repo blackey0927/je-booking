@@ -29,9 +29,9 @@ const SALON = {
   // 每日營業時間（分鐘制）: 0=日 1=一 2=二 3=三 4=四 5=五 6=六
   dayHours: {
     0: { open:600, close:1200 },   // 日 10:00-20:00
-    1: { open:600, close:1260 },   // 一 10:00-21:00
-    2: { open:600, close:1260 },   // 二 10:00-21:00
-    3: { open:600, close:1260 },   // 三 10:00-21:00
+    1: { open:600, close:1170 },   // 一 10:00-19:30
+    2: { open:600, close:1170 },   // 二 10:00-19:30
+    3: { open:600, close:1170 },   // 三 10:00-19:30
     4: { open:600, close:1260 },   // 四 10:00-21:00
     5: { open:600, close:1260 },   // 五 10:00-21:00
     6: { open:600, close:1260 },   // 六 10:00-21:00
@@ -42,13 +42,9 @@ const SALON = {
 
 // ── 設計師連動排班規則（依另一位設計師是否上班決定工時）──
 // whenPresent：被連動設計師上班時的工時；whenAbsent：休假時的工時
-const STYLIST_LINKED_HOURS = {
-  "kai": {                                     // Nancy 依闆娘 (mei) 出勤決定工時
-    linkedStylistId: "mei",
-    whenPresent: { open: 660, close: 1260 },  // 闆娘上班 → Nancy 11:00-21:00
-    whenAbsent:  { open: 600, close: 1200 },  // 闆娘休假 → Nancy 10:00-20:00
-  },
-};
+// 目前無啟用中的連動規則（所有設計師依店家營業時段或個人設定）
+// 範例：{ "kai": { linkedStylistId:"mei", whenPresent:{open:660,close:1260}, whenAbsent:{open:600,close:1200} } }
+const STYLIST_LINKED_HOURS = {};
 
 const DEFAULT_SERVICES = [
   { id:"cut_male",   zh:"男子剪髮",  en:"Men's Haircut",    icon:"✂️", duration:15,  price:"$180",  priceNote:"",   category:"基本", color:"#a0c4b8", desc:"男士精緻剪裁，Fade 刀法、造型設計" },
@@ -82,7 +78,7 @@ const DEFAULT_STYLISTS = [
     id:"kai",    name:"Nancy",  title:"剪髮設計師", photo:null,
     icon:"👨‍🎨", exp:"6年",    specialty:["男子剪髮","女子剪髮","修瀏海","修眉","一般沖洗","精緻洗髮","SPA洗","燙髮","染髮","護髮"],
     color:"#a0c4b8", bio:"刀工精準俐落，男士 Fade 刀法專家，也擅長女士俐落短髮造型。",
-    workDays:[1,3,4,5,6,0], // 上班時段由 STYLIST_LINKED_HOURS 依闆娘出勤連動
+    workDays:[1,3,4,5,6,0], // 上班時段依店家營業時段（無個人時段設定）
   },
   {
     id:"yu",     name:"Yuriliey",  title:"燙髮・護髮師", photo:null,
