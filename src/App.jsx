@@ -187,6 +187,16 @@ function isStylistAvailable(stylist, date, scheduleOverrides) {
   return workDays.includes(date.getDay());
 }
 
+// 回傳設計師當天休假的原因：null=有上班 / "holiday"=排定特休 / "offday"=非常規上班日
+function getStylistOffReason(stylist, date, scheduleOverrides) {
+  if (!stylist) return null;
+  const dateStr  = formatDate(date);
+  const override = scheduleOverrides?.[stylist.id];
+  if (override?.holidays?.includes(dateStr)) return "holiday";
+  const workDays = override?.workDays ?? stylist.workDays;
+  return workDays.includes(date.getDay()) ? null : "offday";
+}
+
 // 不指定設計師時：找當天指定時段最閒（預約最少）且有空的設計師
 // 若全滿回傳 null（進待指派佇列）
 function autoAssignStylist(dateStr, time, serviceIds, bookings, stylists, scheduleOverrides) {
@@ -2566,6 +2576,24 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
     try { return getDayHours(parseDate(form.date)); } catch(_) { return {open:600,close:1260}; }
   }, [form.date]);
 
+  // ── 所選設計師當日是否休假 ──
+  const offReason = useMemo(() => {
+    if (!form.stylistId || !form.date) return null;
+    try { return getStylistOffReason(stylistObj, parseDate(form.date), stylistSettings); }
+    catch(_) { return null; }
+  }, [form.stylistId, form.date, stylistSettings, stylistObj]);
+
+  // 每位設計師當日休假狀態（用於按鈕上的「休」標記）
+  const offMap = useMemo(() => {
+    const m = {};
+    if (!form.date) return m;
+    try {
+      const d = parseDate(form.date);
+      STYLISTS.forEach(st => { m[st.id] = getStylistOffReason(st, d, stylistSettings); });
+    } catch(_) {}
+    return m;
+  }, [form.date, stylistSettings]);
+
   const slots = useMemo(() => {
     if (!form.serviceIds.length || !form.stylistId || !form.date) return [];
     return ALL_SLOTS.filter(slot => {
@@ -2578,6 +2606,15 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
 
   const handleSubmit = () => {
     if (!form.customerName || !form.customerPhone || !form.time) return;
+    // 設計師當天休假 → 需二次確認，避免誤建
+    if (offReason) {
+      const why = offReason === "holiday" ? "排定特休" : "並非常規上班日";
+      const ok = window.confirm(
+        `⚠️ ${stylistObj?.name} 在 ${form.date} ${why}。\n\n` +
+        `確定仍要建立這筆預約嗎？\n（請先確認該設計師當天會到店）`
+      );
+      if (!ok) return;
+    }
     onBook({
       serviceId:  form.serviceIds[0] || "", // primary
       serviceIds: form.serviceIds,
@@ -2637,16 +2674,42 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
                 🎲 不指定
               </button>
               {STYLISTS.map(st=>{
-                const photo = stylistSettings?.[st.id]?.photo;
+                const photo  = stylistSettings?.[st.id]?.photo;
+                const isOff  = !!offMap[st.id];
+                const active = form.stylistId===st.id;
                 return (
                   <button key={st.id} onClick={()=>setForm(p=>({...p,stylistId:st.id,time:""}))}
-                    style={{ display:"flex", alignItems:"center", gap:".4rem", padding:".32rem .75rem", borderRadius:"var(--r-sm)", border:`1px solid ${form.stylistId===st.id?st.color:"var(--line)"}`, background:form.stylistId===st.id?`rgba(${hexToRgb(st.color)},.08)`:"var(--card)", color:form.stylistId===st.id?st.color:"var(--ink2)", fontSize:".87rem", cursor:"pointer" }}>
-                    {photo ? <img src={photo} alt="" style={{ width:16,height:16,borderRadius:"50%",objectFit:"cover" }}/> : <span>{st.icon}</span>}
+                    style={{ display:"flex", alignItems:"center", gap:".4rem", padding:".32rem .75rem", borderRadius:"var(--r-sm)",
+                      border:`1px solid ${active ? (isOff ? "#c4a04a" : st.color) : "var(--line)"}`,
+                      background: active ? (isOff ? "rgba(196,160,74,.10)" : `rgba(${hexToRgb(st.color)},.08)`) : "var(--card)",
+                      color: active ? (isOff ? "#a8853a" : st.color) : (isOff ? "var(--ink4)" : "var(--ink2)"),
+                      fontSize:".87rem", cursor:"pointer" }}>
+                    {photo
+                      ? <img src={photo} alt="" style={{ width:16,height:16,borderRadius:"50%",objectFit:"cover", opacity:isOff?.45:1, filter:isOff?"grayscale(1)":"none" }}/>
+                      : <span style={{ opacity:isOff?.45:1 }}>{st.icon}</span>}
                     {st.name}
+                    {isOff && <span style={{ fontSize:".68rem", padding:"0 .3rem", borderRadius:8, background:"rgba(196,160,74,.16)", color:"#a8853a", fontWeight:600 }}>休</span>}
                   </button>
                 );
               })}
             </div>
+
+            {/* 休假警告 */}
+            {offReason && (
+              <div style={{ marginTop:".55rem", display:"flex", gap:".6rem", alignItems:"flex-start",
+                padding:".7rem .85rem", borderRadius:"var(--r-sm)",
+                background:"rgba(196,160,74,.09)", border:"1px solid rgba(196,160,74,.4)" }}>
+                <span style={{ fontSize:"1rem", lineHeight:1.4 }}>⚠️</span>
+                <div style={{ fontSize:".82rem", color:"var(--ink2)", lineHeight:1.65 }}>
+                  <b style={{ color:"#a8853a" }}>
+                    {stylistObj?.name} 在 {form.date} {offReason==="holiday" ? "排定特休" : "並非常規上班日"}
+                  </b>
+                  <br/>
+                  仍可建立預約，但請先確認該設計師當天確實會到店，或改選其他設計師／日期。
+                </div>
+              </div>
+            )}
+
             {form.stylistId==="" && (
               <div style={{ marginTop:".35rem", fontSize:".76rem", color:"var(--ink3)" }}>
                 💡 預約將以「不指定」儲存，可於預約建立後再指定設計師
