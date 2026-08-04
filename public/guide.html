@@ -1,0 +1,403 @@
+<meta charset="utf-8">
+<title>JE染燙快剪屋 — 線上預約說明</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600;700&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --cream:#f7f3ec; --paper:#fffdfa;
+  --copper:#c4835a; --copper-dk:#9e6039; --copper-bg:rgba(196,131,90,.09); --copper-bd:rgba(196,131,90,.32);
+  --ink:#2b2622; --ink2:#63594f; --ink3:#968c83; --ink4:#c3bbb3;
+  --line:rgba(43,38,34,.11);
+  --ok:#6f9e8a; --plum:#9d82ae;
+  --r:18px; --r-sm:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Noto Sans TC',system-ui,sans-serif;
+  font-size:17px; line-height:1.85; color:var(--ink);
+  background:
+    radial-gradient(900px 500px at 15% -6%, rgba(196,131,90,.14), transparent 60%),
+    radial-gradient(700px 420px at 90% 3%, rgba(157,130,174,.10), transparent 56%),
+    var(--cream);
+  background-attachment:fixed;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:600px;margin:0 auto;padding:0 1.25rem 5rem}
+
+@keyframes up{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+.en{animation:up .4s ease-out both}
+.en:nth-child(2){animation-delay:70ms}
+.en:nth-child(3){animation-delay:140ms}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+/* ── 封面 ── */
+.top{text-align:center;padding:3.5rem 0 2.5rem}
+.top .kicker{font-size:.8rem;letter-spacing:.3em;color:var(--copper);margin-bottom:1rem}
+.top h1{font-family:'Noto Serif TC',serif;font-size:2rem;font-weight:700;line-height:1.35;letter-spacing:.02em}
+.top .sub{font-family:'Noto Serif TC',serif;font-size:1.05rem;color:var(--copper);margin-top:.5rem;letter-spacing:.14em}
+.top p{color:var(--ink2);font-size:.95rem;margin-top:1.25rem}
+.hr{width:44px;height:2px;background:var(--copper);opacity:.5;margin:1.75rem auto 0}
+
+/* ── 主要行動按鈕 ── */
+.cta{
+  display:inline-block;margin-top:1.5rem;padding:.9rem 2.4rem;
+  border-radius:30px;background:var(--copper);color:#fff;
+  font-size:1.02rem;font-weight:500;letter-spacing:.06em;text-decoration:none;
+  box-shadow:0 5px 18px rgba(196,131,90,.34);
+  transition:all .2s ease-out;
+}
+.cta:hover{background:var(--copper-dk);transform:translateY(-2px);box-shadow:0 8px 24px rgba(196,131,90,.42)}
+.cta.wide{display:block;text-align:center;margin:1.5rem 0 0}
+
+/* ── 卡片 ── */
+.card{
+  background:rgba(255,255,255,.7);
+  backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+  border:1px solid rgba(255,255,255,.75);
+  box-shadow:0 8px 30px rgba(120,90,60,.09), inset 0 1px 0 rgba(255,255,255,.9);
+  border-radius:var(--r);
+  padding:1.5rem;
+  margin:1.5rem 0;
+}
+
+/* ── 區塊標題 ── */
+section{margin-bottom:3.5rem}
+.h{display:flex;align-items:center;gap:.75rem;margin-bottom:1.25rem}
+.h .ic{
+  width:38px;height:38px;border-radius:50%;flex-shrink:0;
+  background:var(--copper-bg);border:1px solid var(--copper-bd);
+  display:flex;align-items:center;justify-content:center;font-size:1.15rem;
+}
+.h h2{font-family:'Noto Serif TC',serif;font-size:1.32rem;font-weight:700;letter-spacing:.02em}
+.h .cap{font-size:.8rem;color:var(--ink3);display:block;font-weight:400;font-family:'Noto Sans TC',sans-serif;letter-spacing:0}
+
+/* ── 步驟 ── */
+.step{display:grid;grid-template-columns:44px 1fr;gap:1rem;padding:1.35rem 0;border-top:1px solid var(--line)}
+.step:first-child{border-top:none;padding-top:.25rem}
+.step .n{
+  width:38px;height:38px;border-radius:50%;
+  background:var(--copper);color:#fff;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Noto Serif TC',serif;font-size:1.15rem;font-weight:700;
+  box-shadow:0 3px 10px rgba(196,131,90,.32);
+}
+.step h3{font-size:1.05rem;font-weight:700;margin-bottom:.35rem}
+.step p{font-size:.93rem;color:var(--ink2)}
+.step .hint{
+  margin-top:.65rem;padding:.65rem .85rem;border-radius:var(--r-sm);
+  background:var(--copper-bg);border:1px solid var(--copper-bd);
+  font-size:.86rem;color:var(--ink2);line-height:1.7;
+}
+.step .hint b{color:var(--copper-dk)}
+
+/* ── 分頁示意 ── */
+.tabs{
+  display:flex;background:#fff;border:1px solid var(--line);border-radius:var(--r-sm);
+  overflow:hidden;margin:1rem 0;box-shadow:0 3px 14px rgba(120,90,60,.07);
+}
+.tabs div{flex:1;text-align:center;padding:.7rem .3rem;font-size:.78rem;color:var(--ink3);border-left:1px solid var(--line)}
+.tabs div:first-child{border-left:none}
+.tabs div span{display:block;font-size:1.35rem;line-height:1.5}
+.tabs div.on{color:var(--copper);font-weight:700;background:var(--copper-bg);box-shadow:inset 0 -3px 0 var(--copper)}
+
+/* ── 狀態 ── */
+.states{display:flex;flex-direction:column;gap:.7rem;margin-top:.35rem}
+.state{display:flex;align-items:center;gap:.85rem;padding:.85rem 1rem;border-radius:var(--r-sm);background:var(--paper);border:1px solid var(--line)}
+.state .bd{font-size:.82rem;padding:.25rem .75rem;border-radius:20px;white-space:nowrap;font-weight:500;flex-shrink:0}
+.s-pd{background:rgba(191,174,116,.13);color:#a08e50;border:1px solid rgba(191,174,116,.35)}
+.s-ok{background:rgba(111,158,138,.13);color:var(--ok);border:1px solid rgba(111,158,138,.35)}
+.s-no{background:rgba(191,140,140,.13);color:#b07e7e;border:1px solid rgba(191,140,140,.35)}
+.state p{font-size:.88rem;color:var(--ink2)}
+
+/* ── 提醒 ── */
+.tip{display:grid;grid-template-columns:auto 1fr;gap:.9rem;align-items:start;padding:1.05rem 1.15rem;border-radius:var(--r-sm);margin:1rem 0;font-size:.92rem;line-height:1.75;background:var(--paper);border:1px solid var(--line)}
+.tip .em{font-size:1.2rem;line-height:1.4}
+.tip b{font-weight:700}
+.tip.warm{background:var(--copper-bg);border-color:var(--copper-bd)}
+
+/* ── 營業時間 ── */
+.hours{display:grid;grid-template-columns:repeat(7,1fr);gap:.4rem;margin-top:.35rem}
+.day{padding:.9rem .25rem;text-align:center;border-radius:var(--r-sm);background:var(--paper);border:1px solid var(--line)}
+.day .d{font-family:'Noto Serif TC',serif;font-size:1.1rem;font-weight:700;margin-bottom:.4rem}
+.day .t{font-size:.66rem;color:var(--ink2);line-height:1.7;letter-spacing:-.02em}
+.day.late{background:var(--copper-bg);border-color:var(--copper-bd)}
+.day.late .d{color:var(--copper-dk)}
+.day.sun{background:rgba(157,130,174,.09);border-color:rgba(157,130,174,.3)}
+.day.sun .d{color:var(--plum)}
+.legend{font-size:.82rem;color:var(--ink3);margin-top:.85rem;text-align:center}
+
+/* ── 服務時間 ── */
+.svc{display:flex;flex-wrap:wrap;gap:.45rem;margin-top:.35rem}
+.svc span{font-size:.85rem;padding:.4rem .8rem;border-radius:20px;background:var(--paper);border:1px solid var(--line);color:var(--ink2)}
+.svc span b{color:var(--ink);font-weight:500}
+.svc span.long{background:var(--copper-bg);border-color:var(--copper-bd)}
+.svc span.long b{color:var(--copper-dk)}
+
+/* ── FAQ ── */
+.faq{border-radius:var(--r-sm);overflow:hidden;border:1px solid var(--line);background:var(--paper)}
+details{border-top:1px solid var(--line)}
+details:first-child{border-top:none}
+summary{padding:1.05rem 1.15rem;cursor:pointer;font-size:.98rem;font-weight:500;list-style:none;display:flex;gap:.7rem;align-items:center;transition:background .18s}
+summary::-webkit-details-marker{display:none}
+summary::before{content:'＋';color:var(--copper);flex-shrink:0;font-size:1rem;font-weight:700}
+details[open] summary::before{content:'－'}
+summary:hover{background:var(--copper-bg)}
+details .a{padding:0 1.15rem 1.15rem 2.85rem;font-size:.92rem;color:var(--ink2);line-height:1.85}
+
+/* ── 聯絡 ── */
+.contact{text-align:center;padding:2rem 1.5rem;border-radius:var(--r);background:var(--paper);border:1px solid var(--copper-bd)}
+.contact .nm{font-family:'Noto Serif TC',serif;font-size:1.25rem;font-weight:700;margin-bottom:.85rem}
+.contact p{font-size:.92rem;color:var(--ink2);line-height:2}
+.contact a{color:var(--copper-dk);text-decoration:none;font-weight:500;border-bottom:1px solid var(--copper-bd)}
+.contact .oa{display:inline-block;margin-top:1rem;padding:.6rem 1.4rem;border-radius:24px;background:#06C755;color:#fff;font-size:.92rem;font-weight:500;text-decoration:none;box-shadow:0 3px 12px rgba(6,199,85,.28)}
+
+@media(max-width:420px){
+  body{font-size:16px}
+  .wrap{padding:0 1rem 4rem}
+  .hours{grid-template-columns:repeat(4,1fr)}
+  .top h1{font-size:1.7rem}
+}
+@media print{
+  body{background:#fff}
+  .card,.faq,.contact,.state,.day,.tip{background:#fff!important;backdrop-filter:none!important;box-shadow:none!important;border:1px solid #ddd!important}
+  details .a{display:block!important}
+  section{page-break-inside:avoid}
+  .top{padding:.5rem 0 1.5rem}
+  .cta{display:none!important}
+}
+</style>
+
+<div class="wrap">
+
+<header class="top en">
+  <div class="kicker">線上預約說明</div>
+  <h1>三分鐘，約好你的時間</h1>
+  <div class="sub">JE 染燙快剪屋</div>
+  <p>不用打電話、不用等回覆，手機就能預約</p>
+  <a class="cta" href="https://je-booking.vercel.app">立即預約 →</a>
+  <div class="hr"></div>
+</header>
+
+<!-- ── 怎麼預約 ── -->
+<section class="en">
+  <div class="h">
+    <div class="ic">📝</div>
+    <div><h2>怎麼預約</h2><span class="cap">打開網站，點最左邊的「預約」</span></div>
+  </div>
+
+  <div class="tabs">
+    <div class="on"><span>📝</span>預約</div>
+    <div><span>🔍</span>查詢預約</div>
+    <div><span>✂️</span>服務</div>
+  </div>
+
+  <div class="card">
+    <div class="step">
+      <div class="n">1</div>
+      <div>
+        <h3>選服務</h3>
+        <p>剪髮、洗髮、染燙都在這裡，<b>可以一次選多項</b>。</p>
+        <div class="hint">💡 選好後系統會自動幫你算需要多久，不用自己估。</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="n">2</div>
+      <div>
+        <h3>選設計師</h3>
+        <p>畫面上只會出現當天有上班、而且做這項服務的設計師。</p>
+        <div class="hint">💡 沒有特別偏好？選「<b>不指定</b>」，我們會安排當天最有空的設計師為你服務。</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="n">3</div>
+      <div>
+        <h3>選時間</h3>
+        <p>畫面上看得到的時段，就是真的<b>約得到</b>的時段，直接點就好。</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="n">4</div>
+      <div>
+        <h3>留下姓名和電話</h3>
+        <p>只要姓名和手機號碼。</p>
+        <div class="hint">⚠️ 手機號碼請填正確 — 之後<b>查詢預約要用這支號碼</b>。</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="n">5</div>
+      <div>
+        <h3>完成！</h3>
+        <p>看到預約明細就成功了。我們收到後會盡快確認你的時段。</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="tip warm">
+    <span class="em">👨‍👩‍👧</span>
+    <div><b>要幫全家一起約？</b><br>在第一個畫面上方點「切換為家庭預約」，就能一次幫每個人各自安排服務和時間。</div>
+  </div>
+</section>
+
+<!-- ── 查詢預約 ── -->
+<section class="en">
+  <div class="h">
+    <div class="ic">🔍</div>
+    <div><h2>想確認約到幾點？</h2><span class="cap">點第二個分頁「查詢預約」</span></div>
+  </div>
+
+  <div class="tabs">
+    <div><span>📝</span>預約</div>
+    <div class="on"><span>🔍</span>查詢預約</div>
+    <div><span>✂️</span>服務</div>
+  </div>
+
+  <div class="card">
+    <div class="step">
+      <div class="n">A</div>
+      <div>
+        <h3>用原本那支手機</h3>
+        <p>什麼都不用打，點進去<b>預約就直接出現</b>在畫面上。</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="n">B</div>
+      <div>
+        <h3>換手機了？</h3>
+        <p>輸入<b>預約時填的手機號碼和姓名</b>，就能找回你的預約。</p>
+      </div>
+    </div>
+  </div>
+
+  <p style="font-size:.92rem;color:var(--ink2);margin:1.5rem 0 .85rem">每筆預約都會標示目前狀態：</p>
+  <div class="states">
+    <div class="state"><span class="bd s-pd">待確認</span><p>已經收到你的預約，等我們確認</p></div>
+    <div class="state"><span class="bd s-ok">已確認</span><p>時段確定保留給你了</p></div>
+    <div class="state"><span class="bd s-no">已取消</span><p>這筆預約已取消</p></div>
+  </div>
+</section>
+
+<!-- ── 取消 ── -->
+<section class="en">
+  <div class="h">
+    <div class="ic">🔄</div>
+    <div><h2>要取消或改時間</h2><span class="cap">兩種方式都可以</span></div>
+  </div>
+
+  <div class="tip">
+    <span class="em">📱</span>
+    <div><b>自己取消</b><br>到「查詢預約」<b>點一下那張預約卡</b>，就能取消。</div>
+  </div>
+  <div class="tip">
+    <span class="em">📞</span>
+    <div><b>改時間請直接打給我們</b><br>系統上只能取消不能改時間，換時段請來電 <a href="tel:0981425802" style="color:var(--copper-dk);font-weight:500">0981-425-802</a>，我們幫你調整。</div>
+  </div>
+  <div class="tip warm">
+    <span class="em">🙏</span>
+    <div>臨時不能來，麻煩<b>提早告知</b>，讓時段能留給其他客人，感謝你的體諒。</div>
+  </div>
+</section>
+
+<!-- ── 小提醒 ── -->
+<section class="en">
+  <div class="h">
+    <div class="ic">💡</div>
+    <div><h2>預約前小提醒</h2></div>
+  </div>
+
+  <div class="tip">
+    <span class="em">🚿</span>
+    <div><b>只想洗頭？</b><br>「精緻洗髮」在線上要<b>搭配其他服務</b>一起預約。單純想洗頭的話，直接來店裡或打電話給我們就可以。</div>
+  </div>
+  <div class="tip">
+    <span class="em">⏳</span>
+    <div><b>染燙需要比較長的時間</b><br>建議提早幾天預約，也盡量避開接近打烊的時段，才有充裕的時間完成。</div>
+  </div>
+
+  <div class="svc" style="margin-top:1.25rem">
+    <span><b>男子剪髮</b> 15 分</span>
+    <span><b>女子剪髮</b> 20 分</span>
+    <span><b>修瀏海</b> 10 分</span>
+    <span><b>精緻洗髮</b> 15 分</span>
+    <span><b>SPA洗</b> 30 分</span>
+    <span><b>護髮</b> 30 分</span>
+    <span class="long"><b>染髮</b> 約 2.5 小時</span>
+    <span class="long"><b>燙髮</b> 約 4 小時</span>
+  </div>
+</section>
+
+<!-- ── 營業時間 ── -->
+<section class="en">
+  <div class="h">
+    <div class="ic">🕐</div>
+    <div><h2>營業時間</h2></div>
+  </div>
+
+  <div class="hours">
+    <div class="day sun"><div class="d">日</div><div class="t">10:00<br>│<br>20:00</div></div>
+    <div class="day"><div class="d">一</div><div class="t">10:00<br>│<br>19:30</div></div>
+    <div class="day"><div class="d">二</div><div class="t">10:00<br>│<br>19:30</div></div>
+    <div class="day"><div class="d">三</div><div class="t">10:00<br>│<br>19:30</div></div>
+    <div class="day late"><div class="d">四</div><div class="t">10:00<br>│<br>21:00</div></div>
+    <div class="day late"><div class="d">五</div><div class="t">10:00<br>│<br>21:00</div></div>
+    <div class="day late"><div class="d">六</div><div class="t">10:00<br>│<br>21:00</div></div>
+  </div>
+  <p class="legend">週四、五、六延長至 <b style="color:var(--copper-dk)">21:00</b>　·　週日至 <b style="color:var(--plum)">20:00</b></p>
+</section>
+
+<!-- ── 常見問題 ── -->
+<section class="en">
+  <div class="h">
+    <div class="ic">❓</div>
+    <div><h2>常見問題</h2></div>
+  </div>
+
+  <div class="faq">
+    <details>
+      <summary>一定要加 LINE 好友才能預約嗎？</summary>
+      <div class="a">不用。填姓名和電話就能完成預約。<br>加了官方帳號的話，我們可以另外傳確認訊息給你，但這不是必要的。</div>
+    </details>
+    <details>
+      <summary>預約完沒收到訊息，是失敗了嗎？</summary>
+      <div class="a">不是。<b>只要有看到預約明細畫面，就代表成功了。</b><br>想再確認一次，隨時到「🔍 查詢預約」查看目前狀態。</div>
+    </details>
+    <details>
+      <summary>今天可以約今天嗎？</summary>
+      <div class="a">通常可以。但如果當天人手比較滿，系統會暫時關閉當日預約。<br>這種情況直接打電話給我們，還有空位的話一樣可以為你安排。</div>
+    </details>
+    <details>
+      <summary>想約的時間沒出現在畫面上？</summary>
+      <div class="a">代表那個時段已經有人預約、或是設計師當天休假。<br>可以換個時段、換位設計師，或選「不指定」看看有沒有其他人有空。</div>
+    </details>
+    <details>
+      <summary>可以幫朋友一起約嗎？</summary>
+      <div class="a">可以。用「家庭預約」功能，一次就能幫多個人各自安排服務和時間，不用分開預約好幾次。</div>
+    </details>
+    <details>
+      <summary>會遲到怎麼辦？</summary>
+      <div class="a">請盡快來電告知 <a href="tel:0981425802" style="color:var(--copper-dk)">0981-425-802</a>。<br>我們會盡量幫你調整，但如果後面已經有其他客人，可能需要改約其他時段。</div>
+    </details>
+  </div>
+</section>
+
+<!-- ── 聯絡 ── -->
+<section class="en">
+  <div class="contact">
+    <div class="nm">JE 染燙快剪屋</div>
+    <p>
+      台中市西屯區太原路一段 77 號<br>
+      <a href="tel:0981425802">0981-425-802</a>
+    </p>
+    <a class="oa" href="https://line.me/R/ti/p/@658qpvwi">加入 LINE 官方帳號 @658qpvwi</a>
+    <a class="cta wide" href="https://je-booking.vercel.app">立即預約 →</a>
+  </div>
+</section>
+
+</div>
