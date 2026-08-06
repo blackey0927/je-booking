@@ -2636,6 +2636,32 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
     return m;
   }, [form.date, stylistSettings]);
 
+  // ── 所選時段是否與既有預約重疊 ──
+  const conflicts = useMemo(() => {
+    if (!form.stylistId || !form.date || !form.time || !totalDurM) return [];
+    const start = slotToMinutes(form.time);
+    const end   = start + totalDurM;
+    return bookings.filter(b => {
+      if (b.stylistId !== form.stylistId || b.date !== form.date || b.status === "cancelled") return false;
+      const bStart = slotToMinutes(b.time);
+      const bSvcs  = getBookingSvcs(b);
+      const bDur   = bSvcs.length ? bSvcs.reduce((s,x)=>s+(x.duration||0),0) : 60;
+      return start < bStart + (bDur || 60) && end > bStart;
+    });
+  }, [form.stylistId, form.date, form.time, totalDurM, bookings]);
+
+  // 自訂時間下拉：每個整點是否已被佔用
+  const hourStatus = useMemo(() => {
+    const m = {};
+    if (!form.stylistId || !form.date || !totalDurM) return m;
+    for (let h = SALON.hours.open; h < SALON.hours.close; h++) {
+      const val = `${String(h).padStart(2,"0")}:00`;
+      const ok  = isSlotAvailable(val, form.stylistId, parseDate(form.date), bookings, totalDurM);
+      m[val] = ok ? null : "busy";
+    }
+    return m;
+  }, [form.stylistId, form.date, totalDurM, bookings]);
+
   const slots = useMemo(() => {
     if (!form.serviceIds.length || !form.stylistId || !form.date) return [];
     return ALL_SLOTS.filter(slot => {
@@ -2648,12 +2674,25 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
 
   const handleSubmit = () => {
     if (!form.customerName || !form.customerPhone || !form.time) return;
-    // 設計師當天休假 → 需二次確認，避免誤建
+
+    // 送出前彙整所有問題，一次確認
+    const issues = [];
     if (offReason) {
       const why = offReason === "holiday" ? "排定特休" : "並非常規上班日";
+      issues.push(`・${stylistObj?.name} 在 ${form.date} ${why}`);
+    }
+    if (conflicts.length > 0) {
+      const endT = minsToTime(slotToMinutes(form.time) + totalDurM);
+      issues.push(`・時段重疊：本筆為 ${form.time}–${endT}，但 ${stylistObj?.name} 已有：`);
+      conflicts.forEach(c => {
+        const cs   = getBookingSvcs(c);
+        const cDur = cs.length ? cs.reduce((s,x)=>s+(x.duration||0),0) : 60;
+        issues.push(`　　${c.time}–${minsToTime(slotToMinutes(c.time)+cDur)}　${cs.map(s=>s.zh).join("・")}　${c.customerName}`);
+      });
+    }
+    if (issues.length > 0) {
       const ok = window.confirm(
-        `⚠️ ${stylistObj?.name} 在 ${form.date} ${why}。\n\n` +
-        `確定仍要建立這筆預約嗎？\n（請先確認該設計師當天會到店）`
+        `⚠️ 這筆預約有以下問題：\n\n${issues.join("\n")}\n\n確定仍要建立嗎？`
       );
       if (!ok) return;
     }
@@ -2777,7 +2816,33 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
             </div>
           </div>
 
-          {/* Custom time override */}
+          {/* 時段重疊警告 */}
+          {conflicts.length > 0 && (
+            <div style={{ display:"flex", gap:".6rem", alignItems:"flex-start",
+              padding:".75rem .9rem", borderRadius:"var(--r-sm)",
+              background:"rgba(196,120,120,.09)", border:"1px solid rgba(196,120,120,.45)" }}>
+              <span style={{ fontSize:"1rem", lineHeight:1.4 }}>⛔</span>
+              <div style={{ fontSize:".82rem", color:"var(--ink2)", lineHeight:1.7 }}>
+                <b style={{ color:"#b06060" }}>
+                  時段重疊 — {stylistObj?.name} 在 {form.time} 已有其他預約
+                </b>
+                {conflicts.map(c => {
+                  const cs   = getBookingSvcs(c);
+                  const cDur = cs.length ? cs.reduce((s,x)=>s+(x.duration||0),0) : 60;
+                  const cEnd = minsToTime(slotToMinutes(c.time) + cDur);
+                  return (
+                    <div key={c.id} style={{ marginTop:".3rem", paddingLeft:".2rem" }}>
+                      ・{c.time}–{cEnd}　{cs.map(s=>s.zh).join("・") || "服務"}　{c.customerName}
+                    </div>
+                  );
+                })}
+                <div style={{ marginTop:".4rem", color:"var(--ink3)" }}>
+                  本筆需 {totalDurM} 分鐘（{form.time}–{minsToTime(slotToMinutes(form.time) + totalDurM)}）。
+                  仍可強制建立，但兩筆預約會撞在一起。
+                </div>
+              </div>
+            </div>
+          )}
           <div>
             <label className="field-label">自訂時間（可不選時段直接輸入）</label>
             <select value={form.time} onChange={e=>setForm(p=>({...p,time:e.target.value}))}
@@ -2786,9 +2851,13 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
               {Array.from({ length: SALON.hours.close - SALON.hours.open }, (_, i) => {
                 const h = SALON.hours.open + i;
                 const val = `${String(h).padStart(2,"0")}:00`;
-                return <option key={val} value={val}>{val}</option>;
+                const busy = hourStatus[val] === "busy";
+                return <option key={val} value={val}>{val}{busy ? "　⛔ 已有預約" : ""}</option>;
               })}
             </select>
+            <div style={{ marginTop:".3rem", fontSize:".74rem", color:"var(--ink3)" }}>
+              ⛔ 標記代表該設計師此時段已被佔用，仍可強制建立但會再次確認
+            </div>
           </div>
 
           {/* Customer info */}
