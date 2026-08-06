@@ -128,8 +128,12 @@ function isSlotAvailable(slot, stylistId, date, bookings, serviceDuration) {
   return !bookings.some(b => {
     if (b.stylistId !== stylistId || b.date !== dateStr || b.status === "cancelled") return false;
     const bStart = slotToMinutes(b.time);
-    const svc    = SERVICES.find(s => s.id === b.serviceId);
-    const bEnd   = bStart + (svc?.duration || 60);
+    // 加總該筆預約「所有」服務的時間（複選服務時不可只算第一項）
+    const bSvcs  = getBookingSvcs(b);
+    const bDur   = bSvcs.length
+      ? bSvcs.reduce((sum, s) => sum + (s.duration || 0), 0)
+      : 60;
+    const bEnd   = bStart + (bDur || 60);
     return slotMins < bEnd && slotEnd > bStart;
   });
 }
@@ -1391,7 +1395,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
   const memberSvcs     = (m) => (m.services||[]).map(id=>SERVICES_LOCAL_OUTER.find(s=>s.id===id)).filter(Boolean);
   const memberDuration = (m) => memberSvcs(m).reduce((sum,s)=>sum+(s.duration||0),0);
   const memberStylist  = (m) => STYLISTS_LOCAL_OUTER.find(s=>s.id===m.stylist);
-  const memberSlots    = (m) => {
+  const memberSlots    = (m, selfIdx = -1) => {
     if (!m.stylist || !m.date || !m.services?.length) return [];
     const dur     = memberDuration(m);
     const dateObj = typeof m.date === "string" ? parseDate(m.date) : m.date;
@@ -1399,11 +1403,24 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
     const todayStr = formatDate(new Date());
     const isToday  = m.date === todayStr;
     const nowMins  = isToday ? new Date().getHours()*60+new Date().getMinutes() : 0;
+    const mDateStr = typeof m.date === "string" ? m.date : formatDate(m.date);
+
+    // 同一組家庭預約中，其他成員已選定的時段（同設計師同日才算衝突）
+    const siblings = members
+      .map((o, i) => ({ o, i }))
+      .filter(({ o, i }) =>
+        i !== selfIdx && o.stylist === m.stylist && o.time &&
+        (typeof o.date === "string" ? o.date : formatDate(o.date)) === mDateStr
+      )
+      .map(({ o }) => ({ start: slotToMinutes(o.time), end: slotToMinutes(o.time) + memberDuration(o) }));
+
     return HOUR_SLOTS.filter(slot=>{
       const sm = slotToMinutes(slot);
       if (sm < dh.open) return false;
       if (sm + dur > dh.close) return false;
       if (isToday && sm < nowMins+15) return false;
+      // 與同組其他成員撞時段 → 排除
+      if (siblings.some(s => sm < s.end && sm + dur > s.start)) return false;
       return isSlotAvailable(slot, m.stylist, dateObj, bookings, dur);
     });
   };
@@ -1475,6 +1492,31 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
 
   const confirmBook = () => {
     if (bookMode === "group") {
+      // ── 送出前最終驗證：同組成員不可佔用同一位設計師的重疊時段 ──
+      const spans = members.map((m, i) => ({
+        i, name: m.name || `成員 ${i+1}`,
+        stylist: m.stylist,
+        date: typeof m.date === "string" ? m.date : (m.date ? formatDate(m.date) : ""),
+        start: m.time ? slotToMinutes(m.time) : null,
+        end:   m.time ? slotToMinutes(m.time) + memberDuration(m) : null,
+        time:  m.time,
+      }));
+      for (let a = 0; a < spans.length; a++) {
+        for (let b = a + 1; b < spans.length; b++) {
+          const A = spans[a], B = spans[b];
+          if (A.start === null || B.start === null) continue;
+          if (A.stylist !== B.stylist || A.date !== B.date) continue;
+          if (A.start < B.end && B.start < A.end) {
+            const stName = STYLISTS.find(s => s.id === A.stylist)?.name || "該設計師";
+            window.alert(
+              `⚠️ 時段衝突\n\n「${A.name}」(${A.time}) 與「${B.name}」(${B.time}) ` +
+              `同時預約了 ${stName}，時間互相重疊。\n\n請調整其中一位的時間或改選其他設計師。`
+            );
+            return;
+          }
+        }
+      }
+
       const groupId = "grp_" + Date.now();
       const doneList = members.map((m, idx) => ({
         groupId,
@@ -1898,7 +1940,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
               const done   = memberComplete(m);
               const svcs   = memberSvcs(m);
               const stObj  = memberStylist(m);
-              const slots  = memberSlots(m);
+              const slots  = memberSlots(m, idx);
               const mCalDate = m.calDate || { y:new Date().getFullYear(), m:new Date().getMonth() };
               const mDaysInMonth = getDaysInMonth(mCalDate.y, mCalDate.m);
               const mFirstDay    = getFirstDayOfMonth(mCalDate.y, mCalDate.m);
