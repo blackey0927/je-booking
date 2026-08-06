@@ -2650,17 +2650,46 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
     });
   }, [form.stylistId, form.date, form.time, totalDurM, bookings]);
 
-  // 自訂時間下拉：每個整點是否已被佔用
+  // 自訂時間下拉：每個整點的可用狀態與「不可用的原因」
   const hourStatus = useMemo(() => {
     const m = {};
     if (!form.stylistId || !form.date || !totalDurM) return m;
+    let d, sDh;
+    try {
+      d   = parseDate(form.date);
+      sDh = getStylistDayHours(form.stylistId, d, stylistSettings);
+    } catch(_) { return m; }
+    const dateStr = formatDate(d);
+
     for (let h = SALON.hours.open; h < SALON.hours.close; h++) {
       const val = `${String(h).padStart(2,"0")}:00`;
-      const ok  = isSlotAvailable(val, form.stylistId, parseDate(form.date), bookings, totalDurM);
-      m[val] = ok ? null : "busy";
+      const sm  = slotToMinutes(val);
+      const se  = sm + totalDurM;
+
+      // ① 超出設計師當日上班時段
+      if (sm < sDh.open || se > sDh.close) {
+        m[val] = { type:"hours", label:`需做到 ${minsToTime(se)}，超出 ${minsToTime(sDh.open)}–${minsToTime(sDh.close)}` };
+        continue;
+      }
+      // ② 與既有預約重疊
+      const hit = bookings.find(b => {
+        if (b.stylistId !== form.stylistId || b.date !== dateStr || b.status === "cancelled") return false;
+        const bs   = slotToMinutes(b.time);
+        const svcs = getBookingSvcs(b);
+        const bd   = svcs.length ? svcs.reduce((s,x)=>s+(Number(x.duration)||0),0) : 60;
+        return sm < bs + (bd || 60) && se > bs;
+      });
+      if (hit) {
+        const hs   = slotToMinutes(hit.time);
+        const hSv  = getBookingSvcs(hit);
+        const hd   = hSv.length ? hSv.reduce((s,x)=>s+(Number(x.duration)||0),0) : 60;
+        m[val] = { type:"busy", label:`${hit.time}–${minsToTime(hs+(hd||60))} ${hit.customerName||""}` };
+        continue;
+      }
+      m[val] = null;
     }
     return m;
-  }, [form.stylistId, form.date, totalDurM, bookings]);
+  }, [form.stylistId, form.date, totalDurM, bookings, stylistSettings]);
 
   const slots = useMemo(() => {
     if (!form.serviceIds.length || !form.stylistId || !form.date) return [];
@@ -2844,19 +2873,30 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
             </div>
           )}
           <div>
-            <label className="field-label">自訂時間（可不選時段直接輸入）</label>
+            <label className="field-label">
+              自訂時間（可不選時段直接輸入）
+              {totalDurM > 0 && (
+                <span style={{ marginLeft:".4rem", fontSize:".76rem", color:"var(--copper)", fontWeight:600 }}>
+                  本次服務需 {totalDurM} 分鐘
+                </span>
+              )}
+            </label>
             <select value={form.time} onChange={e=>setForm(p=>({...p,time:e.target.value}))}
               className="field-input" style={{ cursor:"pointer" }}>
               <option value="">-- 選擇整點時段 --</option>
               {Array.from({ length: SALON.hours.close - SALON.hours.open }, (_, i) => {
-                const h = SALON.hours.open + i;
+                const h   = SALON.hours.open + i;
                 const val = `${String(h).padStart(2,"0")}:00`;
-                const busy = hourStatus[val] === "busy";
-                return <option key={val} value={val}>{val}{busy ? "　⛔ 已有預約" : ""}</option>;
+                const stt = hourStatus[val];
+                const end = minsToTime(slotToMinutes(val) + totalDurM);
+                if (!stt) return <option key={val} value={val}>{val}–{end}　✓ 可預約</option>;
+                const mark = stt.type === "hours" ? "🕐" : "⛔";
+                return <option key={val} value={val}>{val}　{mark} {stt.label}</option>;
               })}
             </select>
-            <div style={{ marginTop:".3rem", fontSize:".74rem", color:"var(--ink3)" }}>
-              ⛔ 標記代表該設計師此時段已被佔用，仍可強制建立但會再次確認
+            <div style={{ marginTop:".3rem", fontSize:".74rem", color:"var(--ink3)", lineHeight:1.65 }}>
+              ⛔ 與既有預約重疊　·　🕐 超出設計師上班時段<br/>
+              兩者皆仍可強制建立，送出時會再次確認。<b>服務時間越長，可選的起始時間越少。</b>
             </div>
           </div>
 
