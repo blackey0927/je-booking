@@ -3551,6 +3551,10 @@ function StylistRoster({ bookings, isMobile, stylistMgr, stylistsMgr }) {
           const closedList   = eff.closedOnline || [];
           const upcomingClosed = closedList.filter(d => d >= todayStr);
           const todayClosed  = closedList.includes(todayStr);
+          const tmrDate      = (() => { const d = new Date(today); d.setDate(d.getDate()+1); return d; })();
+          const tmrStr       = formatDate(tmrDate);
+          const tmrClosed    = closedList.includes(tmrStr);
+          const tmrWorking   = isStylistAvailable(st, tmrDate, stylistMgr?.settings);
           const todayCount   = bookings.filter(b=>b.stylistId===st.id&&b.date===todayStr&&b.status!=="cancelled").length;
           const totalCount   = bookings.filter(b=>b.stylistId===st.id&&b.status!=="cancelled").length;
           const isEditing    = editId === st.id;
@@ -3782,22 +3786,31 @@ function StylistRoster({ bookings, isMobile, stylistMgr, stylistsMgr }) {
                   )}
                 </div>
 
-                {/* 線上預約開關 — 今日快速切換 */}
-                {!isEditing && isWorkToday && (
-                  <div style={{ padding:".5rem .75rem", borderBottom:"1px solid var(--line)", display:"flex", alignItems:"center", justifyContent:"space-between", gap:".5rem" }}>
-                    <div style={{ minWidth:0 }}>
-                      <div style={{ fontSize:".72rem", color: todayClosed ? "#c47a3a" : "var(--ink2)", fontWeight:600 }}>
-                        {todayClosed ? "今日已停接線上預約" : "今日開放線上預約"}
+                {/* 線上預約開關 — 今日／明日快速切換 */}
+                {!isEditing && (isWorkToday || tmrWorking) && (
+                  <div style={{ padding:".5rem .75rem", borderBottom:"1px solid var(--line)" }}>
+                    <div style={{ fontSize:".6rem", letterSpacing:".16em", color:"var(--ink3)", textTransform:"uppercase", marginBottom:".4rem" }}>線上預約收單</div>
+                    {[
+                      { key:"today", label:"今日", date:todayStr, closed:todayClosed, show:isWorkToday },
+                      { key:"tmr",   label:"明日", date:tmrStr,   closed:tmrClosed,   show:tmrWorking },
+                    ].filter(r=>r.show).map(row => (
+                      <div key={row.key} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:".5rem", padding:".22rem 0" }}>
+                        <div style={{ minWidth:0 }}>
+                          <div style={{ fontSize:".74rem", color: row.closed ? "#c47a3a" : "var(--ink2)", fontWeight:600 }}>
+                            {row.label} {row.closed ? "已停接線上" : "開放線上預約"}
+                          </div>
+                          <div style={{ fontSize:".58rem", color:"var(--ink4)", marginTop:".05rem" }}>
+                            {row.date} ({["日","一","二","三","四","五","六"][parseDate(row.date).getDay()]})
+                            {row.closed ? " · 現場／電話仍可" : ""}
+                          </div>
+                        </div>
+                        <div onClick={()=>stylistMgr?.toggleClosedOnline(st.id, row.date)}
+                          style={{ position:"relative", width:44, height:24, borderRadius:20, flexShrink:0, cursor:"pointer",
+                            background: row.closed ? "#c47a3a" : "var(--line)", transition:"background .2s" }}>
+                          <div style={{ position:"absolute", top:2, left: row.closed ? 22 : 2, width:20, height:20, borderRadius:"50%", background:"#fff", boxShadow:"0 1px 3px rgba(0,0,0,.25)", transition:"left .2s" }}/>
+                        </div>
                       </div>
-                      <div style={{ fontSize:".6rem", color:"var(--ink4)", marginTop:".1rem" }}>
-                        {todayClosed ? "現場／電話仍可，既有預約不受影響" : "顧客可於線上選擇此設計師"}
-                      </div>
-                    </div>
-                    <div onClick={()=>stylistMgr?.toggleClosedOnline(st.id, todayStr)}
-                      style={{ position:"relative", width:44, height:24, borderRadius:20, flexShrink:0, cursor:"pointer",
-                        background: todayClosed ? "#c47a3a" : "var(--line)", transition:"background .2s" }}>
-                      <div style={{ position:"absolute", top:2, left: todayClosed ? 22 : 2, width:20, height:20, borderRadius:"50%", background:"#fff", boxShadow:"0 1px 3px rgba(0,0,0,.25)", transition:"left .2s" }}/>
-                    </div>
+                    ))}
                   </div>
                 )}
 
