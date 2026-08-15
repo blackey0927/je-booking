@@ -1,6 +1,10 @@
 {
+  "crons": [
+    { "path": "/api/cron-remind", "schedule": "0 12 * * *" }
+  ],
   "rewrites": [
-    { "source": "/(.*)\\.html", "destination": "/$1.html" },
+    { "source": "/hair-oracle.html", "destination": "/hair-oracle.html" },
+    { "source": "/((?!api/).*\\.html)", "destination": "/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
