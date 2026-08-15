@@ -113,16 +113,24 @@ export function buildNewBookingText(booking = {}, svcName, stylistName) {
 }
 
 /** 取消通知文字 */
-export function buildCancelText(booking = {}) {
+export function buildCancelText(booking = {}, svcName, stylistName, cancelledBy) {
   const rows = [
-    line("顧客", booking.customerName),
-    line("電話", booking.customerPhone),
-    line("日期", `${booking.date || ""} ${booking.time || ""}`.trim()),
+    line("服務",   svcName),
+    line("設計師", stylistName),
+    line("日期",   `${booking.date || ""} ${booking.time || ""}`.trim()),
+    line("顧客",   booking.customerName),
+    line("電話",   booking.customerPhone),
   ].filter(Boolean);
 
+  const who =
+    cancelledBy === "customer" ? "（顧客自行取消）" :
+    cancelledBy === "admin"    ? "（店家後台取消）" : "";
+
   return [
-    "⚠️ <b>預約已取消</b>",
+    `⚠️ <b>預約已取消</b>${who}`,
     "",
     ...rows,
+    "",
+    `<i>此時段已釋出，可安排其他客人</i>`,
   ].join("\n");
 }

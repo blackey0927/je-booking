@@ -17,13 +17,13 @@ export default async function handler(req, res) {
   if (req.method !== "POST")    return res.status(405).json({ error: "Method Not Allowed" });
 
   try {
-    const { booking } = req.body || {};
+    const { booking, svcName, stylistName, cancelledBy } = req.body || {};
     if (!booking) return res.status(400).json({ error: "booking 欄位必填" });
 
     const results = [];
 
     try {
-      results.push(await tgSend(buildCancelText(booking)));
+      results.push(await tgSend(buildCancelText(booking, svcName, stylistName, cancelledBy)));
     } catch (e) {
       results.push({ ok: false, channel: "telegram", error: e.message });
     }
