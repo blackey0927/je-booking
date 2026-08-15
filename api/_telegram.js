@@ -123,8 +123,9 @@ export function buildCancelText(booking = {}, svcName, stylistName, cancelledBy)
   ].filter(Boolean);
 
   const who =
-    cancelledBy === "customer" ? "（顧客自行取消）" :
-    cancelledBy === "admin"    ? "（店家後台取消）" : "";
+    cancelledBy === "customer"     ? "（顧客自行取消）" :
+    cancelledBy === "admin"        ? "（店家後台取消）" :
+    cancelledBy === "admin_delete" ? "（店家後台刪除）" : "";
 
   return [
     `⚠️ <b>預約已取消</b>${who}`,
