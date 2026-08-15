@@ -4258,6 +4258,29 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
     setTimeout(() => setLineStatus(null), 4000);
   };
 
+  // 後台取消預約 → 同步通知店家群組（/notify-cancel）
+  const handleAdminCancel = async () => {
+    const label = `${booking.date||""} ${booking.time||""}・${booking.customerName||""}`;
+    if (!window.confirm(`確定取消這筆預約嗎？\n\n${label}\n\n取消後會通知店家群組。`)) return;
+
+    onUpdateStatus(booking.id, "cancelled");
+
+    if (!lineSettings?.webhookUrl) return;
+    try {
+      const baseUrl = lineSettings.webhookUrl.replace(/\/(notify(-new|-cancel)?|webhook)\/?$/i, "");
+      const svcs    = getBookingSvcs(booking, SERVICES);
+      const svcName = svcs.map(s=>s.zh).join("・") || booking.serviceId || "";
+      const res = await fetch(`${baseUrl}/notify-cancel`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          booking: { ...booking, status: "cancelled" },
+          svcName, stylistName: st?.name || "", cancelledBy: "admin",
+        }),
+      });
+      if (!res.ok) console.warn("[notify-cancel/admin] HTTP", res.status);
+    } catch(e) { console.warn("[notify-cancel/admin] 失敗:", e.message); }
+  };
+
   // ── 編輯模式 ──────────────────────────────────────────
   if (editing) {
     const iStyle = { width:"100%", padding:".45rem .6rem", border:"1px solid var(--line)", borderRadius:6, fontSize:".84rem", color:"var(--ink)", background:"var(--card)", outline:"none" };
@@ -4392,7 +4415,7 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
             <button onClick={()=>onUpdateStatus(booking.id,"pending")} style={{ ...actionBtn, borderColor:"rgba(196,188,154,.3)", color:"#c4bc9a" }}>待確認</button>
           )}
           {booking.status!=="cancelled" && (
-            <button onClick={()=>onUpdateStatus(booking.id,"cancelled")} style={{ ...actionBtn, borderColor:"rgba(196,160,160,.3)", color:"#c4a0a0" }}>✕ 取消</button>
+            <button onClick={handleAdminCancel} style={{ ...actionBtn, borderColor:"rgba(196,160,160,.3)", color:"#c4a0a0" }}>✕ 取消</button>
           )}
           {onEditBooking && (
             <button onClick={startEdit} style={{ ...actionBtn, borderColor:"rgba(196,131,90,.3)", color:"var(--copper)" }}>✏️ 編輯</button>
@@ -4981,15 +5004,29 @@ function CancelPage({ bookingId, cancelToken, onDone }) {
       const { ref, update, get } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
       await update(ref(db, `je_bookings/${bookingId}`), { status: "cancelled" });
       setState("cancelled");
-      // 通知店主
+      // 通知店主（修正：baseUrl 正則需與其他呼叫點一致，否則會打到錯誤路徑）
       try {
         const settingsSnap = await get(ref(db, "je_line_settings"));
         const settings = settingsSnap.val();
         if (settings?.webhookUrl) {
-          const baseUrl = settings.webhookUrl.replace(/\/notify\/?$/, "");
-          fetch(`${baseUrl}/notify-cancel`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ booking }) }).catch(()=>{});
+          const baseUrl = settings.webhookUrl.replace(/\/(notify(-new|-cancel)?|webhook)\/?$/i, "");
+          const cSvcName = (booking.serviceIds||[booking.serviceId])
+            .map(id=>SERVICES.find(s=>s.id===id)?.zh||id).filter(Boolean).join("・");
+          const cStylist = STYLISTS.find(s=>s.id===booking.stylistId);
+          fetch(`${baseUrl}/notify-cancel`, {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({
+              booking,
+              svcName: cSvcName,
+              stylistName: cStylist?.name || "",
+              cancelledBy: "customer",
+            }),
+          })
+            .then(r => { if (!r.ok) console.warn("[notify-cancel] HTTP", r.status); })
+            .catch(e => console.warn("[notify-cancel] 失敗:", e.message));
         }
-      } catch(_) {}
+      } catch(e) { console.warn("[notify-cancel] 設定讀取失敗:", e.message); }
     } catch(e) { setState("error"); setErrMsg(e.message); }
   };
 
