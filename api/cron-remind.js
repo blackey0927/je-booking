@@ -142,7 +142,9 @@ export default async function handler(req, res) {
     const header = `📋 <b>明日預約清單</b>　${esc(date)}（${weekdayOf(date)}）`;
 
     if (list.length === 0) {
-      if (!dryRun) tgResult = await tgSend(`${header}\n\n明天沒有預約 ☕`);
+      const emptyBody = `${header}\n\n明天沒有預約 ☕`;
+      if (!dryRun) tgResult = await tgSend(emptyBody);
+      else tgResult = { ok: true, preview: emptyBody };
     } else {
       const lines = list.map((b, i) => {
         const parts = [
