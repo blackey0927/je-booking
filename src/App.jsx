@@ -4281,6 +4281,31 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
     } catch(e) { console.warn("[notify-cancel/admin] 失敗:", e.message); }
   };
 
+  // 後台刪除預約 → 同步通知店家群組（/notify-cancel）
+  const handleAdminDelete = async () => {
+    setConfirm(false);
+
+    // 已取消的預約再刪除，不重複發通知
+    const shouldNotify = booking.status !== "cancelled" && !!lineSettings?.webhookUrl;
+
+    onDelete(booking.id);
+
+    if (!shouldNotify) return;
+    try {
+      const baseUrl = lineSettings.webhookUrl.replace(/\/(notify(-new|-cancel)?|webhook)\/?$/i, "");
+      const svcs    = getBookingSvcs(booking, SERVICES);
+      const svcName = svcs.map(s=>s.zh).join("・") || booking.serviceId || "";
+      const res = await fetch(`${baseUrl}/notify-cancel`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          booking: { ...booking, status: "cancelled" },
+          svcName, stylistName: st?.name || "", cancelledBy: "admin_delete",
+        }),
+      });
+      if (!res.ok) console.warn("[notify-cancel/delete] HTTP", res.status);
+    } catch(e) { console.warn("[notify-cancel/delete] 失敗:", e.message); }
+  };
+
   // ── 編輯模式 ──────────────────────────────────────────
   if (editing) {
     const iStyle = { width:"100%", padding:".45rem .6rem", border:"1px solid var(--line)", borderRadius:6, fontSize:".84rem", color:"var(--ink)", background:"var(--card)", outline:"none" };
@@ -4472,8 +4497,13 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
       )}
       {confirm && (
         <div style={{ padding:".5rem .9rem", borderTop:"1px solid rgba(0,0,0,.04)", display:"flex", alignItems:"center", gap:".6rem", background:"rgba(196,160,160,.05)" }}>
-          <span style={{ fontSize:".94rem", color:"#c4a0a0", flex:1 }}>確定要刪除此預約？</span>
-          <button onClick={()=>{ onDelete(booking.id); setConfirm(false); }} style={{ ...actionBtn, borderColor:"rgba(196,160,160,.5)", color:"#c4a0a0" }}>確定刪除</button>
+          <span style={{ fontSize:".94rem", color:"#c4a0a0", flex:1 }}>
+            確定要刪除此預約？
+            {booking.status !== "cancelled" && lineSettings?.webhookUrl && (
+              <span style={{ display:"block", fontSize:".72rem", color:"#a08080", marginTop:".15rem" }}>刪除後會通知店家群組</span>
+            )}
+          </span>
+          <button onClick={handleAdminDelete} style={{ ...actionBtn, borderColor:"rgba(196,160,160,.5)", color:"#c4a0a0" }}>確定刪除</button>
           <button onClick={()=>setConfirm(false)} style={{ ...actionBtn }}>取消</button>
         </div>
       )}
