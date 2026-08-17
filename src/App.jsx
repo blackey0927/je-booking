@@ -1453,7 +1453,9 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
     if (isOnlineClosed(m.stylist, dateObj, stylistSettings)) return [];
     const dh      = getStylistDayHours(m.stylist, dateObj, stylistSettings);
     const todayStr = formatDate(new Date());
-    const isToday  = m.date === todayStr;
+    const isToday  = (typeof m.date === "string" ? m.date : formatDate(m.date)) === todayStr;
+    // 禁止當日預約：家庭預約同樣適用
+    if (isToday && salonSettings.blockSameDay) return [];
     const nowMins  = isToday ? new Date().getHours()*60+new Date().getMinutes() : 0;
     const mDateStr = typeof m.date === "string" ? m.date : formatDate(m.date);
 
@@ -1471,6 +1473,8 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
       if (sm < dh.open) return false;
       if (sm + dur > dh.close) return false;
       if (isToday && sm < nowMins+15) return false;
+      // 店家公休時段
+      if (isSlotClosedByPeriod(mDateStr, slot, dur, salonSettings.closedPeriods)) return false;
       // 與同組其他成員撞時段 → 排除
       if (siblings.some(s => sm < s.end && sm + dur > s.start)) return false;
       return isSlotAvailable(slot, m.stylist, dateObj, bookings, dur);
@@ -2118,8 +2122,13 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
                                     const dow = dt.getDay();
                                     const stOb = STYLISTS_LOCAL_OUTER.find(s=>s.id===m.stylist);
                                     const isWork = isStylistBookableOnline(stOb, dt, stylistSettings);
-                                    const isPast = dt < mToday;
                                     const dateStr = formatDate(dt);
+                                    // 店家整日公休（與單人預約同一套判斷）
+                                    const mClosures = getDayClosurePeriods(dateStr, salonSettings.closedPeriods);
+                                    const mFullClosed = mClosures.some(p => !p.from || !p.to ||
+                                      (slotToMinutes(p.from) <= slotToMinutes("09:00") && slotToMinutes(p.to) >= slotToMinutes("20:00")));
+                                    // 禁止當日預約設定
+                                    const isPast = mFullClosed || (salonSettings.blockSameDay ? dt <= mToday : dt < mToday);
                                     const isSel   = m.date === dateStr;
                                     const disabled = isPast || !isWork;
                                     return (
