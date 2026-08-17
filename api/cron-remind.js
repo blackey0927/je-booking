@@ -1,10 +1,15 @@
 /**
  * api/cron-remind.js
- * GET /api/cron-remind — 前一天提醒（由 Vercel Cron 每晚觸發）
+ * GET /api/cron-remind — 預約提醒（由 Vercel Cron 觸發）
  *
- * 兩條線：
- *   1) 店家版：明日預約清單 → Telegram（涵蓋全部，零 LINE 額度）
- *   2) 顧客版：個別提醒 → LINE push（僅限有填 U 開頭 userId 的預約，每筆 1 則）
+ * 兩條線，各自獨立排程（用 ?mode= 區分）：
+ *   1) mode=admin    店家版：當日預約清單 → Telegram（零 LINE 額度）
+ *                    台北 00:05 觸發。因系統禁止當日預約，跨過午夜後名單才定案，
+ *                    不會漏掉前一天 20:00–24:00 之間進來的預約。
+ *   2) mode=customer 顧客版：個別提醒 → LINE push（僅限有填 U 開頭 userId 的預約）
+ *                    台北 20:00 觸發，提醒「明天」的預約，維持原行為。
+ *
+ * 未指定 mode 時預設兩條都跑（保留手動呼叫 / 舊排程的相容性）。
  *
  * 環境變數：
  *   CRON_SECRET            必填，防止端點被外部亂打
@@ -41,17 +46,19 @@ async function fbPatch(path, data) {
   return r.json();
 }
 
-/* ── 台北時區的「明天」日期字串 ───────────────────────── */
-function tomorrowTaipei() {
+/* ── 台北時區日期字串（offsetDays=0 今天 / 1 明天）────── */
+function taipeiDate(offsetDays = 0) {
   const now = new Date();
-  // 轉成台北當地時間再 +1 天
+  // 先轉成台北當地時間，再位移天數
   const tpe = new Date(now.getTime() + 8 * 3600 * 1000);
-  tpe.setUTCDate(tpe.getUTCDate() + 1);
+  tpe.setUTCDate(tpe.getUTCDate() + offsetDays);
   const y = tpe.getUTCFullYear();
   const m = String(tpe.getUTCMonth() + 1).padStart(2, "0");
   const d = String(tpe.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
+const todayTaipei    = () => taipeiDate(0);
+const tomorrowTaipei = () => taipeiDate(1);
 
 const WEEKDAY = ["日", "一", "二", "三", "四", "五", "六"];
 function weekdayOf(dateStr) {
@@ -115,8 +122,22 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const date = (req.query && req.query.date) || tomorrowTaipei();
+  // mode=admin（店家清單）/ customer（顧客提醒）/ both（預設，兩者都跑）
+  const mode = String((req.query && req.query.mode) || "both").toLowerCase();
+  if (!["admin", "customer", "both"].includes(mode)) {
+    return res.status(400).json({ error: `Unknown mode: ${mode}` });
+  }
+  const runAdmin    = mode === "admin"    || mode === "both";
+  const runCustomer = mode === "customer" || mode === "both";
+
   const dryRun = String((req.query && req.query.dry) || "") === "1";
+
+  // 店家清單看「今天」（午夜後名單已定案）；顧客提醒看「明天」
+  // ?date= 可手動指定，會同時套用到兩條線，方便補發與測試
+  const forced       = (req.query && req.query.date) || "";
+  const adminDate    = forced || todayTaipei();
+  const customerDate = forced || tomorrowTaipei();
+  const date         = runAdmin ? adminDate : customerDate;
 
   try {
     const [bookingsRaw, servicesRaw, stylistsRaw] = await Promise.all([
@@ -133,20 +154,25 @@ export default async function handler(req, res) {
     const stylistName = (b) => stylists.find(s => s && s.id === b.stylistId)?.name || b.stylistId || "";
 
     const all = Object.entries(bookingsRaw || {}).map(([id, b]) => ({ ...b, id: b.id || id }));
-    const list = all
-      .filter(b => b.date === date && b.status !== "cancelled")
+    const pickFor = (d) => all
+      .filter(b => b.date === d && b.status !== "cancelled")
       .sort((a, b) => String(a.time || "").localeCompare(String(b.time || "")));
+
+    const adminList    = runAdmin    ? pickFor(adminDate)    : [];
+    const customerList = runCustomer ? pickFor(customerDate) : [];
+    const list = adminList;
 
     /* ── 1) 店家版清單 → Telegram ── */
     let tgResult = { ok: false, error: "未執行" };
-    const header = `📋 <b>明日預約清單</b>　${esc(date)}（${weekdayOf(date)}）`;
+    const header = `📋 <b>今日預約清單</b>　${esc(adminDate)}（${weekdayOf(adminDate)}）`;
 
-    if (list.length === 0) {
-      const emptyBody = `${header}\n\n明天沒有預約 ☕`;
-      if (!dryRun) tgResult = await tgSend(emptyBody);
-      else tgResult = { ok: true, preview: emptyBody };
+    if (!runAdmin) {
+      tgResult = { ok: true, skipped: "mode 未包含 admin" };
+    } else if (adminList.length === 0) {
+      if (!dryRun) tgResult = await tgSend(`${header}\n\n今天沒有預約 ☕`);
+      else tgResult = { ok: true, preview: `${header}\n\n今天沒有預約 ☕` };
     } else {
-      const lines = list.map((b, i) => {
+      const lines = adminList.map((b, i) => {
         const parts = [
           `<b>${esc(b.time || "??:??")}</b>`,
           esc(b.customerName || "（未填姓名）"),
@@ -159,7 +185,7 @@ export default async function handler(req, res) {
         if (b.isGroup)      s += `\n　　👨‍👩‍👧 家庭預約（${b.groupSize || "?"}人）`;
         return s;
       });
-      const body = [header, "", `共 <b>${list.length}</b> 筆`, "", ...lines].join("\n");
+      const body = [header, "", `共 <b>${adminList.length}</b> 筆`, "", ...lines].join("\n");
       if (!dryRun) tgResult = await tgSend(body);
       else tgResult = { ok: true, preview: body };
     }
@@ -167,8 +193,8 @@ export default async function handler(req, res) {
     /* ── 2) 顧客版 LINE 提醒 ── */
     const customer = { sent: 0, skipped: 0, failed: [] };
 
-    if (REMIND_CUSTOMERS && LINE_TOKEN) {
-      for (const b of list) {
+    if (runCustomer && REMIND_CUSTOMERS && LINE_TOKEN) {
+      for (const b of customerList) {
         if (!isLineUserId(b.lineId)) { customer.skipped++; continue; }
         if (b.remindedAt)            { customer.skipped++; continue; }
         if (b.isGroup && !b.isGroupPrimary) { customer.skipped++; continue; }
@@ -192,20 +218,23 @@ export default async function handler(req, res) {
         }
       }
     } else {
-      customer.skipped = list.length;
+      customer.skipped = customerList.length;
     }
 
     res.status(200).json({
       ok: true,
-      date,
+      mode,
       dryRun,
-      total: list.length,
+      admin:    { date: adminDate,    total: adminList.length,    ran: runAdmin },
+      customer: { date: customerDate, total: customerList.length, ran: runCustomer },
+      date,
+      total: adminList.length,
       telegram: tgResult,
       customerLine: customer,
     });
   } catch (e) {
     // 失敗時也丟一則到群組，才不會靜悄悄壞掉
-    try { await tgSend(`❌ <b>明日提醒排程失敗</b>\n\n${esc(e.message)}`); } catch (_) {}
+    try { await tgSend(`❌ <b>預約提醒排程失敗</b>（mode=${esc(mode)}）\n\n${esc(e.message)}`); } catch (_) {}
     res.status(500).json({ error: e.message });
   }
 }
