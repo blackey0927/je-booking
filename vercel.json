@@ -1,6 +1,7 @@
 {
   "crons": [
-    { "path": "/api/cron-remind", "schedule": "0 12 * * *" }
+    { "path": "/api/cron-remind?mode=admin", "schedule": "5 16 * * *" },
+    { "path": "/api/cron-remind?mode=customer", "schedule": "0 12 * * *" }
   ],
   "rewrites": [
     { "source": "/hair-oracle.html", "destination": "/hair-oracle.html" },
