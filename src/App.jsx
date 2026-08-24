@@ -985,59 +985,7 @@ function useCustomers() {
 /* ═══════════════════════════════════════════════════════════
    ADMIN AUTH (PIN lock for management tabs)
 ═══════════════════════════════════════════════════════════ */
-/* ── 業績帳本（獨立系統，另開分頁）── */
-const LEDGER_URL = "https://graceful-syrniki-08eb46.netlify.app/";
-
-function LedgerLinkView({ isMobile }) {
-  const open = () => window.open(LEDGER_URL, "_blank", "noopener,noreferrer");
-  return (
-    <div style={{ padding: isMobile ? "1rem .25rem" : "1.5rem .5rem", maxWidth: 520, margin: "0 auto" }}>
-      <div style={{
-        background: "linear-gradient(160deg,#232a40,#2c2438)",
-        borderRadius: 16, padding: isMobile ? "1.5rem 1.25rem" : "2rem 1.75rem",
-        color: "#f2eff7", boxShadow: "0 8px 32px rgba(0,0,0,.22)", textAlign: "center",
-      }}>
-        <div style={{
-          width: 54, height: 54, margin: "0 auto .9rem", borderRadius: 16,
-          background: "linear-gradient(135deg,#a86d85,#d8a1b4)",
-          display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.6rem",
-          boxShadow: "0 4px 16px rgba(168,109,133,.4)",
-        }}>📒</div>
-
-        <div style={{ fontSize: "1.15rem", fontWeight: 700, letterSpacing: ".02em" }}>
-          快剪工作室・業績帳本
-        </div>
-        <div style={{ fontSize: ".78rem", color: "#c3bfd3", marginTop: ".35rem", lineHeight: 1.7 }}>
-          每日記帳 × 個人抽成 × 互助結算
-        </div>
-
-        <button onClick={open} style={{
-          marginTop: "1.4rem", width: "100%", padding: ".8rem 1rem",
-          background: "linear-gradient(135deg,#a86d85,#d8a1b4)", color: "#fff",
-          border: "none", borderRadius: 12, fontSize: ".95rem", fontWeight: 600,
-          cursor: "pointer", boxShadow: "0 4px 16px rgba(168,109,133,.35)",
-          fontFamily: "inherit",
-        }}>
-          開啟業績帳本 ↗
-        </button>
-
-        <div style={{ fontSize: ".7rem", color: "#8a86a0", marginTop: ".85rem", lineHeight: 1.7 }}>
-          會在新分頁開啟，需另外輸入帳本密碼
-        </div>
-      </div>
-
-      <div style={{
-        marginTop: "1rem", padding: ".8rem 1rem", borderRadius: 10,
-        background: "rgba(196,160,96,.08)", border: "1px solid rgba(196,160,96,.28)",
-        fontSize: ".76rem", color: "var(--ink3, #8a7f76)", lineHeight: 1.75,
-      }}>
-        帳本為獨立系統，資料與預約系統分開存放，兩邊的設計師名單不互通。
-      </div>
-    </div>
-  );
-}
-
-const ADMIN_TABS = new Set(["calendar","schedule","stylists","customers","line","rules","ledger"]);
+const ADMIN_TABS = new Set(["calendar","schedule","stylists","customers","line","rules"]);
 const DEFAULT_PIN = "0000";
 
 function useAdminAuth() {
@@ -5336,7 +5284,6 @@ const TABS = [
   { id:"customers", label:"客戶",   icon:"👥" },
   { id:"line",      label:"LINE",   icon:"💬" },
   { id:"rules",     label:"規則",   icon:"⚙️" },
-  { id:"ledger",    label:"帳本",   icon:"📒" },
 ];
 
 export default function SalonApp() {
@@ -5668,7 +5615,6 @@ export default function SalonApp() {
                       {tab==="customers" && <CustomersView customers={customerMgr.customers} onDelete={customerMgr.deleteCustomer} bookings={bookings} isMobile={isMobile}/>}
                       {tab==="line"      && <LINESettingsView settings={lineSettings} onSave={saveLineSettings} bookings={bookings} isMobile={isMobile} adminAuth={adminAuth}/>}
                       {tab==="rules"     && <BookingRulesView settings={salonSettings} onSave={saveSalonSettings} isMobile={isMobile}/>}
-                      {tab==="ledger"    && <LedgerLinkView isMobile={isMobile}/>}
                     </>
                   : <AdminLockScreen onUnlock={adminAuth.unlock} isMobile={isMobile}/>
               )}
