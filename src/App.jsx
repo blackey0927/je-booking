@@ -220,6 +220,8 @@ function getStylistOffReason(stylist, date, scheduleOverrides) {
 
 // 不指定設計師時：找當天指定時段最閒（預約最少）且有空的設計師
 // 若全滿回傳 null（進待指派佇列）
+// ⚠️ 已停用：顧客選「不指定」時不再自動指派，改由店家人工決定。
+//    保留此函式僅供日後「建議可排設計師」之用，目前無任何呼叫點。
 function autoAssignStylist(dateStr, time, serviceIds, bookings, stylists, scheduleOverrides, onlineOnly = false) {
   const date     = parseDate(dateStr);
   const duration = serviceIds.reduce((sum, id) => {
@@ -1598,19 +1600,9 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
       const bookingId   = genId();
       const cancelToken = genCancelToken();
 
-      // 不指定設計師：嘗試自動指派
-      let assignedStylistId = sel.stylist;
-      let needsAssignment   = false;
-      if (sel.stylist === "any") {
-        const dateStr  = formatDate(sel.date);
-        const assigned = autoAssignStylist(dateStr, sel.time, sel.services, bookings, STYLISTS, stylistSettings, true);
-        if (assigned) {
-          assignedStylistId = assigned.id;
-        } else {
-          assignedStylistId = "any"; // 全滿 → 待指派
-          needsAssignment   = true;
-        }
-      }
+      // 不指定設計師：一律保留為「待指派」，由店家人工決定，系統不自動挑人
+      const assignedStylistId = sel.stylist;
+      const needsAssignment   = sel.stylist === "any";
 
       const booking = {
         serviceId:  sel.services[0] || "",
@@ -3220,6 +3212,9 @@ function ScheduleView({ bookings, isMobile, stylistSettings, onAddBooking, styli
     .filter(b => b.date===dateStr && b.status!=="cancelled")
     .sort((a,b)=>a.time.localeCompare(b.time));
 
+  // 「不指定」的預約不屬於任何設計師欄位，另外列出以免被漏掉
+  const unassigned = dayBookings.filter(b => b.needsAssignment || b.stylistId === "any");
+
   const shiftDay = (n) => {
     const d = new Date(viewDate);
     d.setDate(d.getDate() + n);
@@ -3248,6 +3243,44 @@ function ScheduleView({ bookings, isMobile, stylistSettings, onAddBooking, styli
           <button onClick={()=>setShowManualSched(true)} className="btn-copper" style={{ padding:".38rem .9rem", fontSize:".84rem", letterSpacing:".08em" }}>
             ＋ 新增預約
           </button>
+        </div>
+      )}
+
+      {/* ── 待指派設計師（不指定預約）── */}
+      {unassigned.length > 0 && (
+        <div style={{
+          marginBottom:"1rem", padding:".8rem .9rem", borderRadius:"var(--r)",
+          background:"rgba(220,160,50,.07)", border:"1px solid rgba(220,160,50,.32)",
+        }}>
+          <div style={{ display:"flex", alignItems:"center", gap:".4rem", marginBottom:".55rem" }}>
+            <span style={{ fontSize:".95rem" }}>🕘</span>
+            <span style={{ fontSize:".84rem", fontWeight:600, color:"#c4900a" }}>
+              待指派設計師 · {unassigned.length} 筆
+            </span>
+          </div>
+          <div style={{ display:"flex", flexDirection:"column", gap:".35rem" }}>
+            {unassigned.map(b => (
+              <div key={b.id} style={{
+                display:"flex", alignItems:"center", gap:".5rem", flexWrap:"wrap",
+                padding:".4rem .6rem", borderRadius:8,
+                background:"rgba(255,255,255,.7)", border:"1px solid rgba(220,160,50,.2)",
+              }}>
+                <span style={{ fontWeight:700, fontSize:".86rem", color:"var(--ink)" }}>{b.time}</span>
+                <span style={{ fontSize:".84rem", color:"var(--ink2)" }}>{b.customerName || "（未填姓名）"}</span>
+                {b.customerPhone && (
+                  <a href={`tel:${b.customerPhone}`} style={{ fontSize:".78rem", color:"#607090", textDecoration:"none" }}>
+                    📞 {b.customerPhone}
+                  </a>
+                )}
+                {b.isGroup && (
+                  <span style={{ fontSize:".72rem", color:"var(--ink3)" }}>👨‍👩‍👧 家庭</span>
+                )}
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize:".7rem", color:"var(--ink3)", marginTop:".5rem", lineHeight:1.6 }}>
+            顧客選擇「不指定」，請於行事曆中編輯預約並指定設計師。
+          </div>
         </div>
       )}
 
@@ -4406,7 +4439,9 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
         </div>
         <div style={{ flex:1 }}>
           <div style={{ fontSize:".94rem", color:"var(--ink)", fontWeight:600 }}>{svcs.map(s=>s.zh).join("・") || booking.serviceId}</div>
-          <div style={{ fontSize:".86rem", color:st?.color }}>{st?.icon} {st?.name} · {booking.time}</div>
+          <div style={{ fontSize:".86rem", color: st?.color || "#c4900a" }}>
+            {st ? `${st.icon} ${st.name}` : "🕘 待指派設計師"} · {booking.time}
+          </div>
         </div>
         <span style={{ padding:".12rem .5rem", borderRadius:20, fontSize:".70rem", background:`rgba(${hexToRgb(STATUS_COLOR[booking.status])},.12)`, color:STATUS_COLOR[booking.status], border:`1px solid rgba(${hexToRgb(STATUS_COLOR[booking.status])},.25)` }}>
           {STATUS_LABEL[booking.status]}
@@ -5325,7 +5360,8 @@ export default function SalonApp() {
       const svcs       = getBookingSvcs(booking, servicesMgr.services || DEFAULT_SERVICES);
       const svcName    = svcs.map(s=>s.zh).join("・") || booking.serviceId || "";
       const stylist    = (stylistsMgr.stylists || DEFAULT_STYLISTS).find(s => s.id === booking.stylistId);
-      const stylistName = stylist?.name || "";
+      const stylistName = stylist?.name
+        || (booking.stylistId === "any" || booking.needsAssignment ? "不指定（待店家安排）" : "");
       addBooking(booking);
       customerMgr.upsertFromBooking(booking, svcName, stylistName);
 
