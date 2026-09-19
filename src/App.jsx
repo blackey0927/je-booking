@@ -138,6 +138,56 @@ function isSlotAvailable(slot, stylistId, date, bookings, serviceDuration) {
   });
 }
 
+/* ── 人力容量（待指派預約的隱形佔位）──────────────────────
+   「不指定」的預約在店家指派前 stylistId 仍是 "any"，isSlotAvailable
+   以 stylistId 比對，因此查不到它——同一時段等於完全沒被佔用，
+   可以被無限次收單。設計師休假、當天只剩一兩人時特別明顯。
+   解法：把每一筆待指派預約視為已預先吃掉一個人力。            */
+
+/** 一筆預約的實際總時長（複選服務要加總，取不到時以 60 分鐘計） */
+function bookingTotalDuration(b) {
+  const svcs = getBookingSvcs(b);
+  const sum  = svcs.reduce((n, s) => n + (s.duration || 0), 0);
+  return sum || 60;
+}
+
+/** 該時段還空著的設計師人數（已排除特休／非上班日／暫停線上收單／個人時段外／已有預約） */
+function countFreeStylists(slot, date, bookings, stylists, scheduleOverrides, duration) {
+  const slotMins = slotToMinutes(slot);
+  return (stylists || []).filter(st => {
+    if (!isStylistBookableOnline(st, date, scheduleOverrides)) return false;
+    const dh = getStylistDayHours(st.id, date, scheduleOverrides);
+    if (slotMins < dh.open || slotMins + duration > dh.close) return false;
+    return isSlotAvailable(slot, st.id, date, bookings, duration);
+  }).length;
+}
+
+/** 與該時段重疊、尚未指派設計師的預約筆數（每筆各佔一個人力） */
+function countPendingUnassigned(slot, date, bookings, duration) {
+  const slotMins = slotToMinutes(slot);
+  const slotEnd  = slotMins + duration;
+  const dateStr  = formatDate(date);
+  return (bookings || []).filter(b => {
+    if (b.date !== dateStr || b.status === "cancelled") return false;
+    if (!(b.needsAssignment || b.stylistId === "any")) return false;
+    if (!b.time) return false;
+    const bStart = slotToMinutes(b.time);
+    const bEnd   = bStart + bookingTotalDuration(b);
+    return slotMins < bEnd && slotEnd > bStart;
+  }).length;
+}
+
+/**
+ * 該時段扣掉待指派預約後，是否還有餘裕再收一筆。
+ * 指定與不指定都適用：指定某位設計師時，若他是最後一位空的人，
+ * 而已有待指派預約在排隊，這個時段同樣不該再開放。
+ */
+function hasSpareCapacity(slot, date, bookings, stylists, scheduleOverrides, duration) {
+  const free    = countFreeStylists(slot, date, bookings, stylists, scheduleOverrides, duration);
+  const pending = countPendingUnassigned(slot, date, bookings, duration);
+  return free - pending >= 1;
+}
+
 function formatDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
@@ -1479,7 +1529,9 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
       if (isSlotClosedByPeriod(mDateStr, slot, dur, salonSettings.closedPeriods)) return false;
       // 與同組其他成員撞時段 → 排除
       if (siblings.some(s => sm < s.end && sm + dur > s.start)) return false;
-      return isSlotAvailable(slot, m.stylist, dateObj, bookings, dur);
+      if (!isSlotAvailable(slot, m.stylist, dateObj, bookings, dur)) return false;
+      // 待指派預約已預留人力，家庭預約同樣不可佔走最後一位設計師
+      return hasSpareCapacity(slot, dateObj, bookings, STYLISTS_LOCAL_OUTER, stylistSettings, dur);
     });
   };
   const memberComplete    = (m) => !!(m.name && m.services?.length && m.stylist && m.date && m.time);
@@ -1520,11 +1572,14 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
         if (isToday && slotMins < nowMins + 15) return false;
         if (isSlotClosedByPeriod(formatDate(sel.date), slot, totalDuration, salonSettings.closedPeriods)) return false;
         // 每位設計師各自以本人時段判斷
-        return available.some(st => {
+        const canServe = available.some(st => {
           const stDh = getStylistDayHours(st.id, date, stylistSettings);
           if (slotMins < stDh.open || slotMins + totalDuration > stDh.close) return false;
           return isSlotAvailable(slot, st.id, date, bookings, totalDuration);
         });
+        if (!canServe) return false;
+        // 已存在的待指派預約已先佔用人力，扣掉後仍要有人可接
+        return hasSpareCapacity(slot, date, bookings, STYLISTS, stylistSettings, totalDuration);
       });
     }
 
@@ -1538,7 +1593,9 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
       if (minStartMins > 0 && slotMins < minStartMins) return false;
       if (isToday && slotMins < nowMins + 15) return false;
       if (isSlotClosedByPeriod(formatDate(sel.date), slot, totalDuration, salonSettings.closedPeriods)) return false;
-      return isSlotAvailable(slot, sel.stylist, sel.date, bookings, totalDuration);
+      if (!isSlotAvailable(slot, sel.stylist, sel.date, bookings, totalDuration)) return false;
+      // 待指派預約已預留人力，不可被指定預約佔走最後一位設計師
+      return hasSpareCapacity(slot, sel.date, bookings, STYLISTS, stylistSettings, totalDuration);
     });
   }, [sel.stylist, sel.date, sel.services, bookings, totalDuration, selSvcs, stylistSettings]);
 
