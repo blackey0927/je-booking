@@ -238,7 +238,7 @@ function countPendingUnassigned(slot, date, bookings, duration) {
   const dateStr  = formatDate(date);
   return (bookings || []).filter(b => {
     if (b.date !== dateStr || b.status === "cancelled") return false;
-    if (!(b.needsAssignment || b.stylistId === "any")) return false;
+    if (!isUnassignedBooking(b)) return false;
     if (!b.time) return false;
     const bStart = slotToMinutes(b.time);
     const bEnd   = bStart + bookingTotalDuration(b);
@@ -251,6 +251,96 @@ function countPendingUnassigned(slot, date, bookings, duration) {
  * 指定與不指定都適用：指定某位設計師時，若他是最後一位空的人，
  * 而已有待指派預約在排隊，這個時段同樣不該再開放。
  */
+/** 尚未指派設計師的預約（線上不指定 / 後台不指定 / 舊資料空白） */
+function isUnassignedBooking(b) {
+  return !!(b && (b.needsAssignment || b.stylistId === "any" || !b.stylistId));
+}
+
+/**
+ * 設計師是否會做這些服務（以 specialty 比對服務名稱）。
+ * allStylists 有給時，沒有任何設計師登記過的服務（例如新增後尚未設定專長的自訂服務）
+ * 不列入比對——否則所有人都「不會做」，專長檢查就整個失效。
+ */
+function stylistCanDo(st, serviceIds, allStylists) {
+  let names = (serviceIds || [])
+    .map(id => (SERVICES.find(x => x.id === id) || {}).zh)
+    .filter(Boolean);
+  if (allStylists && allStylists.length) {
+    names = names.filter(nm => allStylists.some(o => (o.specialty || []).includes(nm)));
+  }
+  return names.every(nm => (st.specialty || []).includes(nm));
+}
+
+/**
+ * 新預約是否能收：把「新預約」與「時段重疊的待指派預約」一起配對給設計師。
+ * 每一筆都必須分到一位——當天上班、在個人時段內、該時段沒被已指派預約佔用、
+ * 且會做該筆全部服務——的設計師，同一位設計師不可同時接兩筆重疊的預約。
+ * 只要配不出來，代表收下這筆後有人會沒設計師可接 → 不開放。
+ *
+ * stylistId 為 null / "any" 表示新預約不指定設計師。
+ */
+function canAcceptBooking({ slot, date, duration, serviceIds, stylistId, bookings, stylists, overrides }) {
+  const dateStr = formatDate(date);
+  const start   = slotToMinutes(slot);
+  const end     = start + duration;
+  const span    = b => { const s0 = slotToMinutes(b.time); return [s0, s0 + getBookingDuration(b)]; };
+
+  const dayBks   = (bookings || []).filter(b => b.date === dateStr && b.status !== "cancelled" && b.time);
+  const assigned = dayBks.filter(b => !isUnassignedBooking(b));
+  const pending  = dayBks.filter(isUnassignedBooking).filter(b => {
+    const [ps, pe] = span(b);
+    return start < pe && end > ps;
+  });
+
+  const busy = (stId, s0, e0) => assigned.some(b => {
+    if (b.stylistId !== stId) return false;
+    const [bs, be] = span(b);
+    return s0 < be && e0 > bs;
+  });
+  const fits = (st, s0, e0) => {
+    const dh = getStylistDayHours(st.id, date, overrides);
+    return s0 >= dh.open && e0 <= dh.close && !busy(st.id, s0, e0);
+  };
+
+  const list    = stylists || [];
+  const working = list.filter(st => isStylistAvailable(st, date, overrides));
+  const online  = list.filter(st => isStylistBookableOnline(st, date, overrides));
+
+  // 新預約的候選設計師
+  const newCands = (stylistId && stylistId !== "any")
+    ? online.filter(st => st.id === stylistId && fits(st, start, end))
+    : online.filter(st => fits(st, start, end) && stylistCanDo(st, serviceIds, list));
+  if (newCands.length === 0) return false;
+
+  const items = [{ s:start, e:end, cands:newCands }];
+  for (const p of pending) {
+    const [ps, pe] = span(p);
+    const ids  = (p.serviceIds && p.serviceIds.length) ? p.serviceIds : [p.serviceId].filter(Boolean);
+    const free = working.filter(st => fits(st, ps, pe));
+    let cands  = free.filter(st => stylistCanDo(st, ids, list));
+    // 當天上班的人都不會做（這筆本來就排不出去）→ 放寬為任何有空的人，避免整段時段被鎖死
+    if (cands.length === 0) cands = free;
+    items.push({ s:ps, e:pe, cands });
+  }
+
+  // 回溯配對：選擇最少的先排
+  const order = items.map((_, i) => i).sort((a, b) => items[a].cands.length - items[b].cands.length);
+  const plan  = {};
+  const place = (k) => {
+    if (k === order.length) return true;
+    const it = items[order[k]];
+    for (const st of it.cands) {
+      const segs = plan[st.id] || [];
+      if (segs.some(([s0, e0]) => it.s < e0 && it.e > s0)) continue;
+      plan[st.id] = [...segs, [it.s, it.e]];
+      if (place(k + 1)) return true;
+      plan[st.id] = segs;
+    }
+    return false;
+  };
+  return place(0);
+}
+
 function hasSpareCapacity(slot, date, bookings, stylists, scheduleOverrides, duration) {
   const free    = countFreeStylists(slot, date, bookings, stylists, scheduleOverrides, duration);
   const pending = countPendingUnassigned(slot, date, bookings, duration);
@@ -1601,7 +1691,8 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
       if (siblings.some(s => sm < s.end && sm + dur > s.start)) return false;
       if (!isSlotAvailable(slot, m.stylist, dateObj, bookings, dur)) return false;
       // 待指派預約已預留人力，家庭預約同樣不可佔走最後一位設計師
-      return hasSpareCapacity(slot, dateObj, bookings, STYLISTS_LOCAL_OUTER, stylistSettings, dur);
+      return canAcceptBooking({ slot, date:dateObj, duration:dur, serviceIds:m.services,
+        stylistId:m.stylist, bookings, stylists:STYLISTS_LOCAL_OUTER, overrides:stylistSettings });
     });
   };
   const memberComplete    = (m) => !!(m.name && m.services?.length && m.stylist && m.date && m.time);
@@ -1649,7 +1740,8 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
         });
         if (!canServe) return false;
         // 已存在的待指派預約已先佔用人力，扣掉後仍要有人可接
-        return hasSpareCapacity(slot, date, bookings, STYLISTS, stylistSettings, totalDuration);
+        return canAcceptBooking({ slot, date, duration:totalDuration, serviceIds:sel.services,
+          stylistId:null, bookings, stylists:STYLISTS, overrides:stylistSettings });
       });
     }
 
@@ -1665,7 +1757,8 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
       if (isSlotClosedByPeriod(formatDate(sel.date), slot, totalDuration, salonSettings.closedPeriods)) return false;
       if (!isSlotAvailable(slot, sel.stylist, sel.date, bookings, totalDuration)) return false;
       // 待指派預約已預留人力，不可被指定預約佔走最後一位設計師
-      return hasSpareCapacity(slot, sel.date, bookings, STYLISTS, stylistSettings, totalDuration);
+      return canAcceptBooking({ slot, date:sel.date, duration:totalDuration, serviceIds:sel.services,
+        stylistId:sel.stylist, bookings, stylists:STYLISTS, overrides:stylistSettings });
     });
   }, [sel.stylist, sel.date, sel.services, bookings, totalDuration, selSvcs, stylistSettings]);
 
@@ -2937,7 +3030,8 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
     onBook({
       serviceId:  form.serviceIds[0] || "", // primary
       serviceIds: form.serviceIds,
-      stylistId: form.stylistId,
+      stylistId: form.stylistId || "any",
+      needsAssignment: !form.stylistId,
       date: form.date, time: form.time,
       customerName: form.customerName, customerPhone: form.customerPhone,
       lineId: form.lineId, notes: form.notes,
@@ -3386,7 +3480,7 @@ function ScheduleView({ bookings, isMobile, stylistSettings, onAddBooking, styli
     .sort((a,b)=>a.time.localeCompare(b.time));
 
   // 「不指定」的預約不屬於任何設計師欄位，另外列出以免被漏掉
-  const unassigned = dayBookings.filter(b => b.needsAssignment || b.stylistId === "any");
+  const unassigned = dayBookings.filter(isUnassignedBooking);
 
   const shiftDay = (n) => {
     const d = new Date(viewDate);
