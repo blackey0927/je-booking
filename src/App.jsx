@@ -99,6 +99,81 @@ function getBookingSvcs(booking, svcs) {
   return ids.map(id => list.find(s => s.id === id)).filter(Boolean);
 }
 
+/**
+ * 預約實際佔用的時長（分鐘）。
+ * 後台手動設定的 durationMin 優先——燙髮等需先溝通的服務，
+ * 設計師來電確認後依實際需求填寫，不必硬佔服務預設的整段時間。
+ */
+/** 顧客點選「需來電洽詢」服務時跳出的提示 */
+function PhoneOnlyNotice({ svc, onClose, isMobile }) {
+  if (!svc) return null;
+  const tel     = String(SALON.phone || "").replace(/[^0-9+]/g, "");
+  const lineUrl = SALON.lineOaId ? `https://line.me/R/ti/p/${encodeURIComponent(SALON.lineOaId)}` : "";
+  return (
+    <div onClick={e=>{ if (e.target === e.currentTarget) onClose(); }}
+      style={{ position:"fixed", inset:0, zIndex:1000, background:"rgba(28,24,22,.55)",
+        display:"flex", alignItems:"center", justifyContent:"center", padding:"1.25rem" }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="phone-only-title"
+        style={{ width:"100%", maxWidth:400, background:"var(--card)", borderRadius:16,
+          boxShadow:"0 20px 60px rgba(28,24,22,.3)", overflow:"hidden", textAlign:"center" }}>
+        <div style={{ padding: isMobile ? "1.5rem 1.25rem 1rem" : "1.75rem 1.5rem 1.1rem" }}>
+          <div style={{ fontSize:"2.2rem", lineHeight:1, marginBottom:".7rem" }}>📞</div>
+          <div id="phone-only-title" style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.4rem",
+            fontWeight:600, color:"var(--ink)", letterSpacing:".04em" }}>
+            請來電洽詢
+          </div>
+          <div style={{ marginTop:".35rem", fontSize:".86rem", color:"var(--copper)", fontWeight:600 }}>
+            {svc.icon} {svc.zh}
+          </div>
+          <div style={{ marginTop:".85rem", fontSize:".86rem", color:"var(--ink2)", lineHeight:1.8 }}>
+            {svc.zh}需依髮質、長度與想要的效果評估所需時間，<br/>
+            請先來電與設計師討論，我們會為您安排合適的時段。
+          </div>
+        </div>
+        <div style={{ padding:"0 1.25rem 1.25rem", display:"flex", flexDirection:"column", gap:".55rem" }}>
+          {tel && (
+            <a href={`tel:${tel}`} className="btn-copper"
+              style={{ display:"block", padding:".8rem 1rem", borderRadius:12, fontSize:"1rem",
+                fontWeight:600, textDecoration:"none", letterSpacing:".04em" }}>
+              📞 撥打 {SALON.phone}
+            </a>
+          )}
+          {lineUrl && (
+            <a href={lineUrl} target="_blank" rel="noopener noreferrer"
+              style={{ display:"block", padding:".7rem 1rem", borderRadius:12, fontSize:".9rem",
+                fontWeight:600, textDecoration:"none", color:"#06a64a",
+                background:"rgba(6,199,85,.08)", border:"1px solid rgba(6,199,85,.35)" }}>
+              💬 LINE 詢問
+            </a>
+          )}
+          <button onClick={onClose} className="btn-ghost"
+            style={{ padding:".65rem 1rem", borderRadius:12, fontSize:".88rem" }}>
+            改選其他服務
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function getBookingDuration(b, svcs) {
+  const custom = Number(b?.durationMin);
+  if (custom > 0) return custom;
+  const sum = getBookingSvcs(b, svcs).reduce((n, x) => n + (Number(x.duration) || 0), 0);
+  return sum || 60;
+}
+
+/**
+ * 需來電洽詢、不開放線上預約的服務。
+ * 後台「服務」頁可逐項開關；尚未設定過的服務，燙髮預設為需來電。
+ */
+const PHONE_ONLY_DEFAULT_IDS = ["perm"];
+function isPhoneOnlyService(svc) {
+  if (!svc) return false;
+  if (typeof svc.phoneOnly === "boolean") return svc.phoneOnly;
+  return PHONE_ONLY_DEFAULT_IDS.includes(svc.id);
+}
+
 const WEEK_DAYS = ["日","一","二","三","四","五","六"];
 const STATUS_COLOR = { confirmed:"#a0c4b8", pending:"#c4bc9a", cancelled:"#c4a0a0" };
 const STATUS_LABEL = { confirmed:"已確認", pending:"待確認", cancelled:"已取消" };
@@ -128,12 +203,8 @@ function isSlotAvailable(slot, stylistId, date, bookings, serviceDuration) {
   return !bookings.some(b => {
     if (b.stylistId !== stylistId || b.date !== dateStr || b.status === "cancelled") return false;
     const bStart = slotToMinutes(b.time);
-    // 加總該筆預約「所有」服務的時間（複選服務時不可只算第一項）
-    const bSvcs  = getBookingSvcs(b);
-    const bDur   = bSvcs.length
-      ? bSvcs.reduce((sum, s) => sum + (s.duration || 0), 0)
-      : 60;
-    const bEnd   = bStart + (bDur || 60);
+    // 手動時長優先，否則加總所有服務時間（複選服務時不可只算第一項）
+    const bEnd   = bStart + getBookingDuration(b);
     return slotMins < bEnd && slotEnd > bStart;
   });
 }
@@ -146,9 +217,7 @@ function isSlotAvailable(slot, stylistId, date, bookings, serviceDuration) {
 
 /** 一筆預約的實際總時長（複選服務要加總，取不到時以 60 分鐘計） */
 function bookingTotalDuration(b) {
-  const svcs = getBookingSvcs(b);
-  const sum  = svcs.reduce((n, s) => n + (s.duration || 0), 0);
-  return sum || 60;
+  return getBookingDuration(b);
 }
 
 /** 該時段還空著的設計師人數（已排除特休／非上班日／暫停線上收單／個人時段外／已有預約） */
@@ -1472,6 +1541,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
   const [step, setStep] = useState(-1);
   const [showHairAnalysis, setShowHairAnalysis] = useState(false);
   const [sel, setSel]   = useState({ services:[], stylist:null, date:null, time:null });
+  const [phoneOnlySvc, setPhoneOnlySvc] = useState(null);   // 顯示「請來電洽詢」的服務
   const [form, setForm] = useState({ name:"", phone:"", lineId:"", notes:"" });
   const [done, setDone] = useState(null);
   const [calDate, setCalDate] = useState(() => { const d=new Date(); return {y:d.getFullYear(),m:d.getMonth()}; });
@@ -1607,6 +1677,15 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
   };
 
   const confirmBook = () => {
+    // 防呆：需來電洽詢的服務一律不可線上送出
+    const chosenIds = bookMode === "group"
+      ? members.flatMap(m => m.services || [])
+      : sel.services;
+    const blocked = chosenIds
+      .map(id => SERVICES_LOCAL_OUTER.find(x => x.id === id))
+      .find(x => isPhoneOnlyService(x));
+    if (blocked) { setPhoneOnlySvc(blocked); return; }
+
     if (bookMode === "group") {
       // ── 送出前最終驗證：同組成員不可佔用同一位設計師的重疊時段 ──
       const spans = members.map((m, i) => ({
@@ -1693,6 +1772,8 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
     <div style={{ maxWidth:600, margin:"0 auto" }}>
 
       {/* ── Hair Analysis Modal ── */}
+      <PhoneOnlyNotice svc={phoneOnlySvc} onClose={()=>setPhoneOnlySvc(null)} isMobile={isMobile}/>
+
       {showHairAnalysis && (
         <HairAnalysisModal
           onClose={()=>setShowHairAnalysis(false)}
@@ -1951,6 +2032,11 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
               const photo  = svcPhotos[svc.id];
               return (
                 <button key={svc.id} onClick={()=>{
+                  // 需來電洽詢的服務不開放線上預約（已選取的舊狀態仍允許取消勾選）
+                  if (isPhoneOnlyService(svc) && !sel.services.includes(svc.id)) {
+                    setPhoneOnlySvc(svc);
+                    return;
+                  }
                   const ADDON_ONLY = ["shampoo"];
                   const isAddon = ADDON_ONLY.includes(svc.id);
                   setSel(p=>{
@@ -1992,6 +2078,11 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
                     {["shampoo"].includes(svc.id) && (
                       <div style={{ position:"absolute", top:".5rem", left:".5rem", fontSize:".6rem", padding:".1rem .38rem", borderRadius:20, background:"rgba(80,80,80,.75)", color:"#fff", backdropFilter:"blur(4px)", letterSpacing:".03em" }}>
                         ＋ 加購
+                      </div>
+                    )}
+                    {isPhoneOnlyService(svc) && (
+                      <div style={{ position:"absolute", top:".5rem", left:".5rem", fontSize:".6rem", padding:".1rem .4rem", borderRadius:20, background:"rgba(196,131,90,.92)", color:"#fff", backdropFilter:"blur(4px)", letterSpacing:".03em" }}>
+                        📞 來電洽詢
                       </div>
                     )}
                     {/* 服務名稱浮層 */}
@@ -2108,7 +2199,10 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
                           {SERVICES_LOCAL_OUTER.map(svc=>{
                             const active = m.services?.includes(svc.id);
                             return (
-                              <button key={svc.id} onClick={()=>updateMember(idx,{ services: active ? m.services.filter(id=>id!==svc.id) : [...(m.services||[]),svc.id], stylist:null, date:null, time:null })}
+                              <button key={svc.id} onClick={()=>{
+                                  if (!active && isPhoneOnlyService(svc)) { setPhoneOnlySvc(svc); return; }
+                                  updateMember(idx,{ services: active ? m.services.filter(id=>id!==svc.id) : [...(m.services||[]),svc.id], stylist:null, date:null, time:null });
+                                }}
                                 style={{ display:"flex", alignItems:"center", gap:".5rem", padding:".6rem .75rem", borderRadius:10, border:`1.5px solid ${active?"var(--copper)":"var(--line)"}`, background:active?"var(--copper-bg)":"var(--card)", color:active?"var(--copper)":"var(--ink2)", textAlign:"left", cursor:"pointer", transition:"all .16s", WebkitTapHighlightColor:"transparent" }}>
                                 <span style={{ fontSize:"1.1rem" }}>{svc.icon}</span>
                                 <div>
@@ -2717,12 +2811,16 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
     date: today, time:"10:00",
     customerName:"", customerPhone:"", notes:"", lineId:"",
     source: "phone",
+    durationMin: "",   // 空白 = 依服務預設時長
   });
   const [saved, setSaved] = useState(false);
 
   const selSvcsM    = SERVICES.filter(s => form.serviceIds.includes(s.id));
   const svcObj      = selSvcsM[0] || null;
-  const totalDurM   = selSvcsM.reduce((sum,s)=>sum+(s.duration||0),0);
+  const svcDurM     = selSvcsM.reduce((sum,s)=>sum+(s.duration||0),0);
+  // 設計師手動填寫的作業時長優先（燙髮等來電溝通後才確定的服務）
+  const customDurM  = Number(form.durationMin) > 0 ? Number(form.durationMin) : 0;
+  const totalDurM   = customDurM || svcDurM;
   const stylistObj  = STYLISTS.find(s => s.id === form.stylistId);
 
   const dh = useMemo(() => {
@@ -2761,9 +2859,7 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
     return bookings.filter(b => {
       if (b.stylistId !== form.stylistId || b.date !== form.date || b.status === "cancelled") return false;
       const bStart = slotToMinutes(b.time);
-      const bSvcs  = getBookingSvcs(b);
-      const bDur   = bSvcs.length ? bSvcs.reduce((s,x)=>s+(x.duration||0),0) : 60;
-      return start < bStart + (bDur || 60) && end > bStart;
+      return start < bStart + getBookingDuration(b) && end > bStart;
     });
   }, [form.stylistId, form.date, form.time, totalDurM, bookings]);
 
@@ -2792,15 +2888,11 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
       const hit = bookings.find(b => {
         if (b.stylistId !== form.stylistId || b.date !== dateStr || b.status === "cancelled") return false;
         const bs   = slotToMinutes(b.time);
-        const svcs = getBookingSvcs(b);
-        const bd   = svcs.length ? svcs.reduce((s,x)=>s+(Number(x.duration)||0),0) : 60;
-        return sm < bs + (bd || 60) && se > bs;
+        return sm < bs + getBookingDuration(b) && se > bs;
       });
       if (hit) {
         const hs   = slotToMinutes(hit.time);
-        const hSv  = getBookingSvcs(hit);
-        const hd   = hSv.length ? hSv.reduce((s,x)=>s+(Number(x.duration)||0),0) : 60;
-        m[val] = { type:"busy", label:`${hit.time}–${minsToTime(hs+(hd||60))} ${hit.customerName||""}` };
+        m[val] = { type:"busy", label:`${hit.time}–${minsToTime(hs+getBookingDuration(hit))} ${hit.customerName||""}` };
         continue;
       }
       m[val] = null;
@@ -2832,7 +2924,7 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
       issues.push(`・時段重疊：本筆為 ${form.time}–${endT}，但 ${stylistObj?.name} 已有：`);
       conflicts.forEach(c => {
         const cs   = getBookingSvcs(c);
-        const cDur = cs.length ? cs.reduce((s,x)=>s+(x.duration||0),0) : 60;
+        const cDur = getBookingDuration(c);
         issues.push(`　　${c.time}–${minsToTime(slotToMinutes(c.time)+cDur)}　${cs.map(s=>s.zh).join("・")}　${c.customerName}`);
       });
     }
@@ -2851,6 +2943,7 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
       lineId: form.lineId, notes: form.notes,
       source: form.source,
       status: "confirmed",
+      ...(customDurM ? { durationMin: customDurM } : {}),
     });
     setSaved(true);
     setTimeout(() => { setSaved(false); onClose(); }, 1200);
@@ -2887,9 +2980,32 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
             </div>
             {selSvcsM.length > 0 && (
               <div style={{ marginTop:".4rem", fontSize:".78rem", color:"var(--ink3)" }}>
-                合計 {totalDurM} 分鐘
+                服務預設合計 {svcDurM} 分鐘
               </div>
             )}
+          </div>
+
+          {/* 作業時長（手動覆寫）*/}
+          <div>
+            <label className="field-label">實際作業時長（分鐘，可留空）</label>
+            <div style={{ display:"flex", gap:".5rem", alignItems:"center" }}>
+              <input type="number" min="5" step="5" inputMode="numeric"
+                value={form.durationMin}
+                onChange={e=>setForm(p=>({...p, durationMin:e.target.value, time:""}))}
+                placeholder={svcDurM ? `預設 ${svcDurM}` : "依服務預設"}
+                className="field-input" style={{ maxWidth:160 }}/>
+              {customDurM > 0 && (
+                <button onClick={()=>setForm(p=>({...p, durationMin:"", time:""}))}
+                  className="btn-ghost" style={{ padding:".35rem .7rem", fontSize:".78rem" }}>
+                  改回預設
+                </button>
+              )}
+            </div>
+            <div style={{ marginTop:".35rem", fontSize:".74rem", color:"var(--ink3)", lineHeight:1.6 }}>
+              {customDurM > 0
+                ? <>本筆佔用 <b style={{ color:"var(--copper)" }}>{customDurM} 分鐘</b>，其餘空檔可再接其他預約。</>
+                : <>燙髮等需先溝通的服務，來電確認後可填入實際所需時間，避免整段時間被佔住。</>}
+            </div>
           </div>
 
           {/* Stylist */}
@@ -2990,7 +3106,7 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
                 </b>
                 {conflicts.map(c => {
                   const cs   = getBookingSvcs(c);
-                  const cDur = cs.length ? cs.reduce((s,x)=>s+(x.duration||0),0) : 60;
+                  const cDur = getBookingDuration(c);
                   const cEnd = minsToTime(slotToMinutes(c.time) + cDur);
                   return (
                     <div key={c.id} style={{ marginTop:".3rem", paddingLeft:".2rem" }}>
@@ -4027,7 +4143,7 @@ function ServicesMenu({ isMobile, servicesMgr, svcPhotosMgr, svcPhotos={} }) {
 
   const startEdit = (svc) => {
     setEditId(svc.id);
-    setDraft({ zh:svc.zh, desc:svc.desc, price:svc.price, priceNote:svc.priceNote||"", duration:svc.duration, category:svc.category, icon:svc.icon, color:svc.color });
+    setDraft({ zh:svc.zh, desc:svc.desc, price:svc.price, priceNote:svc.priceNote||"", duration:svc.duration, category:svc.category, icon:svc.icon, color:svc.color, phoneOnly:isPhoneOnlyService(svc) });
   };
   const saveEdit = (id) => {
     servicesMgr?.updateService(id, { ...draft, duration:Number(draft.duration)||30 });
@@ -4191,6 +4307,11 @@ function ServicesMenu({ isMobile, servicesMgr, svcPhotosMgr, svcPhotos={} }) {
                       {svc.desc && <div style={{ fontSize:".74rem", color:"var(--ink3)", lineHeight:1.6, marginBottom:".35rem" }}>{svc.desc}</div>}
                       <div style={{ display:"flex", gap:".6rem", flexWrap:"wrap", alignItems:"center" }}>
                         <span style={{ fontSize:".68rem", color:"var(--ink3)", fontFamily:"'DM Mono',monospace" }}>⏱ {svc.duration}min</span>
+                        {isPhoneOnlyService(svc) && (
+                          <span style={{ fontSize:".66rem", padding:".05rem .45rem", borderRadius:20, background:"rgba(196,131,90,.1)", color:"var(--copper)", border:"1px solid rgba(196,131,90,.3)", fontWeight:600 }}>
+                            📞 需來電洽詢
+                          </span>
+                        )}
                         <span style={{ fontSize:".66rem", color:"var(--ink3)" }}>
                           可服務：{STYLISTS.filter(st=>(st.specialty||[]).includes(svc.zh)).map(st=>st.name).join("・")||"—"}
                         </span>
@@ -4232,6 +4353,26 @@ function ServicesMenu({ isMobile, servicesMgr, svcPhotosMgr, svcPhotos={} }) {
                         <label style={{ display:"block", fontSize:".66rem", color:"var(--ink3)", letterSpacing:".08em", textTransform:"uppercase", marginBottom:".2rem" }}>描述</label>
                         <input value={draft.desc} onChange={e=>setDraft(p=>({...p,desc:e.target.value}))}
                           className="field-input" style={{ fontSize:".85rem" }} placeholder="服務說明"/>
+                      </div>
+                      {/* 需來電洽詢開關 */}
+                      <div onClick={()=>setDraft(p=>({...p, phoneOnly:!p.phoneOnly}))}
+                        style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:".6rem",
+                          marginBottom:".55rem", padding:".55rem .7rem", borderRadius:8, cursor:"pointer",
+                          border:`1px solid ${draft.phoneOnly ? "rgba(196,131,90,.45)" : "var(--line)"}`,
+                          background: draft.phoneOnly ? "rgba(196,131,90,.06)" : "transparent" }}>
+                        <div style={{ minWidth:0 }}>
+                          <div style={{ fontSize:".8rem", fontWeight:600, color: draft.phoneOnly ? "var(--copper)" : "var(--ink2)" }}>
+                            📞 需來電洽詢，不開放線上預約
+                          </div>
+                          <div style={{ fontSize:".68rem", color:"var(--ink3)", marginTop:".1rem", lineHeight:1.5 }}>
+                            顧客點選時跳出「請來電洽詢」；後台手動預約不受影響
+                          </div>
+                        </div>
+                        <div style={{ position:"relative", width:40, height:22, borderRadius:20, flexShrink:0,
+                          background: draft.phoneOnly ? "var(--copper)" : "var(--line)", transition:"background .2s" }}>
+                          <div style={{ position:"absolute", top:2, left: draft.phoneOnly ? 20 : 2, width:18, height:18,
+                            borderRadius:"50%", background:"#fff", boxShadow:"0 1px 3px rgba(0,0,0,.25)", transition:"left .2s" }}/>
+                        </div>
                       </div>
                       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:".55rem", marginBottom:".55rem" }}>
                         <div style={{ gridColumn:"1/3" }}>
@@ -4297,6 +4438,7 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
       notes:         booking.notes         || "",
       stylistId:     booking.stylistId     || "",
       serviceIds:    booking.serviceIds    || [booking.serviceId].filter(Boolean),
+      durationMin:   Number(booking.durationMin) > 0 ? String(booking.durationMin) : "",
     });
     setEditing(true);
   };
@@ -4315,6 +4457,8 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
       serviceIds:    editForm.serviceIds,
       // 若已指派設計師，清除待指派標記
       needsAssignment: editForm.stylistId === "any" ? true : false,
+      // 空白 → null：Firebase update 會移除欄位，回到依服務預設時長
+      durationMin:   Number(editForm.durationMin) > 0 ? Number(editForm.durationMin) : null,
     });
     setEditing(false);
   };
@@ -4437,8 +4581,15 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
           {/* 設計師 */}
           <div><label style={lStyle}>負責設計師</label>
             <select value={editForm.stylistId} onChange={ef("stylistId")} style={iStyle}>
+              <option value="any">🕘 待指派（不指定）</option>
               {STYLISTS.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
+          </div>
+          {/* 作業時長 */}
+          <div><label style={lStyle}>實際作業時長（分鐘）</label>
+            <input type="number" min="5" step="5" inputMode="numeric"
+              value={editForm.durationMin} onChange={ef("durationMin")} style={iStyle}
+              placeholder={`留空＝依服務預設 ${getBookingSvcs({ serviceIds: editForm.serviceIds }).reduce((n,x)=>n+(Number(x.duration)||0),0) || 60} 分`}/>
           </div>
           {/* LINE ID */}
           <div><label style={lStyle}>LINE ID</label>
