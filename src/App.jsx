@@ -164,6 +164,75 @@ function getBookingDuration(b, svcs) {
 }
 
 /**
+ * 預約實際佔用設計師的時段（可能不只一段）。
+ *
+ * 燙髮、染髮這類服務中間有上藥水、等待作用的空檔，設計師在那段時間
+ * 其實可以接別的客人。預約若填了「中途空檔」，就拆成前段與後段兩塊，
+ * 中間那段視為有空 —— 不填就跟以往一樣，整段連續佔用。
+ *
+ * 回傳 [[起, 迄], ...]（分鐘制）
+ */
+function bookingBusySegments(b, svcs) {
+  const start = slotToMinutes(b.time);
+  const end   = start + getBookingDuration(b, svcs);
+  if (!b.freeFrom || !b.freeTo) return [[start, end]];
+
+  let f, t;
+  try { f = slotToMinutes(b.freeFrom); t = slotToMinutes(b.freeTo); }
+  catch (_) { return [[start, end]]; }
+
+  // 空檔必須落在預約區間內，否則視為沒有空檔
+  f = Math.max(start, f);
+  t = Math.min(end, t);
+  if (!(t > f)) return [[start, end]];
+
+  return [[start, f], [t, end]].filter(([a, z]) => z > a);
+}
+
+/**
+ * 服務的預設中途空檔設定。
+ * gapAfter  = 開始後幾分鐘進入空檔（例如燙髮上完藥水約 60 分）
+ * gapLength = 空檔持續幾分鐘（等待藥水作用的時間）
+ * 在「服務」頁逐項設定，之後建立預約自動帶入，不必每筆手動填。
+ */
+function getServiceGap(svc) {
+  const after = Number(svc?.gapAfter), len = Number(svc?.gapLength);
+  if (!(after >= 0) || !(len > 0)) return null;
+  return { after, length: len };
+}
+
+/**
+ * 依所選服務算出預設空檔（多項服務時取空檔最長的那項），並裁切在預約區間內。
+ * 回傳 { freeFrom, freeTo } 或 null。
+ */
+function defaultGapFor(serviceIds, startMins, duration, svcs) {
+  const list = svcs || SERVICES;
+  let best = null;
+  (serviceIds || []).forEach(id => {
+    const g = getServiceGap(list.find(x => x.id === id));
+    if (g && (!best || g.length > best.length)) best = g;
+  });
+  if (!best) return null;
+  const from = startMins + best.after;
+  const to   = Math.min(from + best.length, startMins + duration);
+  if (!(to > from) || from <= startMins || to >= startMins + duration) {
+    // 空檔要真的夾在中間（前後都還有作業）才有意義
+    if (!(to > from) || from <= startMins) return null;
+  }
+  return { freeFrom: minsToTime(from), freeTo: minsToTime(Math.min(to, startMins + duration)) };
+}
+
+/** 由開始時間、時長與空檔算出佔用時段（建立／編輯預約時用） */
+function makeBusySegments(start, duration, freeFrom, freeTo) {
+  return bookingBusySegments({ time: minsToTime(start), durationMin: duration, freeFrom, freeTo });
+}
+
+/** 兩組時段是否有任何重疊 */
+function segmentsOverlap(segsA, segsB) {
+  return segsA.some(([a1, a2]) => segsB.some(([b1, b2]) => a1 < b2 && a2 > b1));
+}
+
+/**
  * 需來電洽詢、不開放線上預約的服務。
  * 後台「服務」頁可逐項開關；尚未設定過的服務，燙髮預設為需來電。
  */
@@ -196,17 +265,23 @@ function slotToMinutes(t) {
   return h * 60 + m;
 }
 
-function isSlotAvailable(slot, stylistId, date, bookings, serviceDuration) {
+function isSlotAvailable(slot, stylistId, date, bookings, serviceDuration, mySegs) {
   const slotMins  = slotToMinutes(slot);
   const slotEnd   = slotMins + serviceDuration;
   const dateStr   = formatDate(date);
+  // mySegs：新預約自己的佔用時段（燙染中途有空檔時會是兩段）
+  const segs = (mySegs && mySegs.length) ? mySegs : [[slotMins, slotEnd]];
   return !bookings.some(b => {
     if (b.stylistId !== stylistId || b.date !== dateStr || b.status === "cancelled") return false;
-    const bStart = slotToMinutes(b.time);
-    // 手動時長優先，否則加總所有服務時間（複選服務時不可只算第一項）
-    const bEnd   = bStart + getBookingDuration(b);
-    return slotMins < bEnd && slotEnd > bStart;
+    // 以實際佔用時段比對：有中途空檔的預約，空檔那段不算佔用
+    return segmentsOverlap(segs, bookingBusySegments(b));
   });
+}
+
+/** 依服務預設空檔算出新預約的佔用時段 */
+function newBookingSegments(startMins, duration, serviceIds, svcs) {
+  const g = defaultGapFor(serviceIds, startMins, duration, svcs);
+  return makeBusySegments(startMins, duration, g?.freeFrom, g?.freeTo);
 }
 
 /* ── 人力容量（待指派預約的隱形佔位）──────────────────────
@@ -294,8 +369,7 @@ function canAcceptBooking({ slot, date, duration, serviceIds, stylistId, booking
 
   const busy = (stId, s0, e0) => assigned.some(b => {
     if (b.stylistId !== stId) return false;
-    const [bs, be] = span(b);
-    return s0 < be && e0 > bs;
+    return segmentsOverlap([[s0, e0]], bookingBusySegments(b));
   });
   const fits = (st, s0, e0) => {
     const dh = getStylistDayHours(st.id, date, overrides);
@@ -519,7 +593,13 @@ function isSlotClosedByPeriod(dateStr, slotStr, durationMins, closedPeriods = []
 function getDayClosurePeriods(dateStr, closedPeriods = []) {
   return (closedPeriods || []).filter(p => p.date === dateStr);
 }
-const HOUR_SLOTS = generateSlots(SALON.hours.open, SALON.hours.close, 60);
+/**
+ * 顧客端可選的預約起始時間間隔（分鐘）。
+ * 30 = 每半小時（10:00、10:30、11:00…）；改成 60 就回到整點、15 則更密。
+ * 後台手動預約沿用 ALL_SLOTS（15 分鐘），不受此設定影響。
+ */
+const BOOKING_SLOT_MINUTES = 30;
+const BOOK_SLOTS = generateSlots(SALON.hours.open, SALON.hours.close, BOOKING_SLOT_MINUTES);
 
 /* ═══════════════════════════════════════════════════════════
    STORAGE SHIM
@@ -1680,7 +1760,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
       )
       .map(({ o }) => ({ start: slotToMinutes(o.time), end: slotToMinutes(o.time) + memberDuration(o) }));
 
-    return HOUR_SLOTS.filter(slot=>{
+    return BOOK_SLOTS.filter(slot=>{
       const sm = slotToMinutes(slot);
       if (sm < dh.open) return false;
       if (sm + dur > dh.close) return false;
@@ -1689,7 +1769,8 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
       if (isSlotClosedByPeriod(mDateStr, slot, dur, salonSettings.closedPeriods)) return false;
       // 與同組其他成員撞時段 → 排除
       if (siblings.some(s => sm < s.end && sm + dur > s.start)) return false;
-      if (!isSlotAvailable(slot, m.stylist, dateObj, bookings, dur)) return false;
+      if (!isSlotAvailable(slot, m.stylist, dateObj, bookings, dur,
+            newBookingSegments(sm, dur, m.services, SERVICES_LOCAL_OUTER))) return false;
       // 待指派預約已預留人力，家庭預約同樣不可佔走最後一位設計師
       return canAcceptBooking({ slot, date:dateObj, duration:dur, serviceIds:m.services,
         stylistId:m.stylist, bookings, stylists:STYLISTS_LOCAL_OUTER, overrides:stylistSettings });
@@ -1725,7 +1806,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
         if (svcNames.length > 0 && !svcNames.every(n => st.specialty.includes(n))) return false;
         return true;
       });
-      return HOUR_SLOTS.filter(slot => {
+      return BOOK_SLOTS.filter(slot => {
         const slotMins = slotToMinutes(slot);
         if (slotMins < dh.open) return false;
         if (slotMins + totalDuration > dh.close) return false;
@@ -1733,10 +1814,11 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
         if (isToday && slotMins < nowMins + 15) return false;
         if (isSlotClosedByPeriod(formatDate(sel.date), slot, totalDuration, salonSettings.closedPeriods)) return false;
         // 每位設計師各自以本人時段判斷
+        const mySegs = newBookingSegments(slotMins, totalDuration, sel.services, SERVICES_LOCAL);
         const canServe = available.some(st => {
           const stDh = getStylistDayHours(st.id, date, stylistSettings);
           if (slotMins < stDh.open || slotMins + totalDuration > stDh.close) return false;
-          return isSlotAvailable(slot, st.id, date, bookings, totalDuration);
+          return isSlotAvailable(slot, st.id, date, bookings, totalDuration, mySegs);
         });
         if (!canServe) return false;
         // 已存在的待指派預約已先佔用人力，扣掉後仍要有人可接
@@ -1748,14 +1830,15 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
     // ── 指定設計師：以設計師個人時段為準 ──
     if (isOnlineClosed(sel.stylist, sel.date, stylistSettings)) return [];
     const sDh = getStylistDayHours(sel.stylist, sel.date, stylistSettings);
-    return HOUR_SLOTS.filter(slot => {
+    return BOOK_SLOTS.filter(slot => {
       const slotMins = slotToMinutes(slot);
       if (slotMins < sDh.open) return false;
       if (slotMins + totalDuration > sDh.close) return false;
       if (minStartMins > 0 && slotMins < minStartMins) return false;
       if (isToday && slotMins < nowMins + 15) return false;
       if (isSlotClosedByPeriod(formatDate(sel.date), slot, totalDuration, salonSettings.closedPeriods)) return false;
-      if (!isSlotAvailable(slot, sel.stylist, sel.date, bookings, totalDuration)) return false;
+      if (!isSlotAvailable(slot, sel.stylist, sel.date, bookings, totalDuration,
+            newBookingSegments(slotMins, totalDuration, sel.services, SERVICES_LOCAL))) return false;
       // 待指派預約已預留人力，不可被指定預約佔走最後一位設計師
       return canAcceptBooking({ slot, date:sel.date, duration:totalDuration, serviceIds:sel.services,
         stylistId:sel.stylist, bookings, stylists:STYLISTS, overrides:stylistSettings });
@@ -1813,6 +1896,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
         serviceIds: m.services,
         stylistId: m.stylist,
         date: typeof m.date === "string" ? m.date : formatDate(m.date), time: m.time,
+        ...(defaultGapFor(m.services, slotToMinutes(m.time), memberDuration(m), SERVICES_LOCAL_OUTER) || {}),
         customerName: form.name + "（" + m.name + "）",
         memberName: m.name,
         customerPhone: form.phone, lineId: form.lineId,
@@ -1839,6 +1923,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
         stylistId:  assignedStylistId,
         needsAssignment,
         date: formatDate(sel.date), time: sel.time,
+        ...(defaultGapFor(sel.services, slotToMinutes(sel.time), totalDuration, SERVICES_LOCAL) || {}),
         customerName: form.name, customerPhone: form.phone, lineId: form.lineId, notes: form.notes,
         source: "online",
         id: bookingId, cancelToken,
@@ -2905,6 +2990,7 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
     customerName:"", customerPhone:"", notes:"", lineId:"",
     source: "phone",
     durationMin: "",   // 空白 = 依服務預設時長
+    freeFrom: "", freeTo: "",   // 中途空檔（燙染等待時間，可接其他客人）
   });
   const [saved, setSaved] = useState(false);
 
@@ -2914,6 +3000,21 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
   // 設計師手動填寫的作業時長優先（燙髮等來電溝通後才確定的服務）
   const customDurM  = Number(form.durationMin) > 0 ? Number(form.durationMin) : 0;
   const totalDurM   = customDurM || svcDurM;
+  // 中途空檔：手動填寫優先；沒填就套用服務的預設空檔
+  const manualGapOK = !!(form.freeFrom && form.freeTo && slotToMinutes(form.freeTo) > slotToMinutes(form.freeFrom));
+  const svcGap = useMemo(() => {
+    if (manualGapOK || !form.time || !totalDurM) return null;
+    try { return defaultGapFor(form.serviceIds, slotToMinutes(form.time), totalDurM); }
+    catch(_) { return null; }
+  }, [manualGapOK, form.serviceIds, form.time, totalDurM]);
+  const gapOK   = manualGapOK || !!svcGap;
+  const gapFrom = manualGapOK ? form.freeFrom : (svcGap?.freeFrom || "");
+  const gapTo   = manualGapOK ? form.freeTo   : (svcGap?.freeTo   || "");
+  // 時段下拉要逐一試算（每個起始時間的預設空檔不同），不能用固定的 gapFrom/gapTo
+  const gapForStart = (sm) => {
+    if (manualGapOK) return { freeFrom: form.freeFrom, freeTo: form.freeTo };
+    try { return defaultGapFor(form.serviceIds, sm, totalDurM) || {}; } catch(_) { return {}; }
+  };
   const stylistObj  = STYLISTS.find(s => s.id === form.stylistId);
 
   const dh = useMemo(() => {
@@ -2947,14 +3048,12 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
   // ── 所選時段是否與既有預約重疊 ──
   const conflicts = useMemo(() => {
     if (!form.stylistId || !form.date || !form.time || !totalDurM) return [];
-    const start = slotToMinutes(form.time);
-    const end   = start + totalDurM;
+    const mySegs = makeBusySegments(slotToMinutes(form.time), totalDurM, gapFrom, gapTo);
     return bookings.filter(b => {
       if (b.stylistId !== form.stylistId || b.date !== form.date || b.status === "cancelled") return false;
-      const bStart = slotToMinutes(b.time);
-      return start < bStart + getBookingDuration(b) && end > bStart;
+      return segmentsOverlap(mySegs, bookingBusySegments(b));
     });
-  }, [form.stylistId, form.date, form.time, totalDurM, bookings]);
+  }, [form.stylistId, form.date, form.time, totalDurM, bookings, gapFrom, gapTo]);
 
   // 自訂時間下拉：每個整點的可用狀態與「不可用的原因」
   const hourStatus = useMemo(() => {
@@ -2971,17 +3070,18 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
       const val = `${String(h).padStart(2,"0")}:00`;
       const sm  = slotToMinutes(val);
       const se  = sm + totalDurM;
+      const g0 = gapForStart(sm);
+      const mySegs = makeBusySegments(sm, totalDurM, g0.freeFrom, g0.freeTo);
 
       // ① 超出設計師當日上班時段
       if (sm < sDh.open || se > sDh.close) {
         m[val] = { type:"hours", label:`需做到 ${minsToTime(se)}，超出 ${minsToTime(sDh.open)}–${minsToTime(sDh.close)}` };
         continue;
       }
-      // ② 與既有預約重疊
+      // ② 與既有預約重疊（扣掉雙方的中途空檔）
       const hit = bookings.find(b => {
         if (b.stylistId !== form.stylistId || b.date !== dateStr || b.status === "cancelled") return false;
-        const bs   = slotToMinutes(b.time);
-        return sm < bs + getBookingDuration(b) && se > bs;
+        return segmentsOverlap(mySegs, bookingBusySegments(b));
       });
       if (hit) {
         const hs   = slotToMinutes(hit.time);
@@ -2991,7 +3091,7 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
       m[val] = null;
     }
     return m;
-  }, [form.stylistId, form.date, totalDurM, bookings, stylistSettings]);
+  }, [form.stylistId, form.date, totalDurM, bookings, stylistSettings, gapFrom, gapTo]);
 
   const slots = useMemo(() => {
     if (!form.serviceIds.length || !form.stylistId || !form.date) return [];
@@ -2999,9 +3099,15 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
       const sm  = slotToMinutes(slot);
       const sDh = getStylistDayHours(form.stylistId, parseDate(form.date), stylistSettings);
       if (sm < sDh.open || sm + totalDurM > sDh.close) return false;
-      return isSlotAvailable(slot, form.stylistId, parseDate(form.date), bookings, totalDurM);
+      const g0      = gapForStart(sm);
+      const mySegs  = makeBusySegments(sm, totalDurM, g0.freeFrom, g0.freeTo);
+      const dateStr = form.date;
+      return !bookings.some(b => {
+        if (b.stylistId !== form.stylistId || b.date !== dateStr || b.status === "cancelled") return false;
+        return segmentsOverlap(mySegs, bookingBusySegments(b));
+      });
     });
-  }, [form.serviceIds, form.stylistId, form.date, bookings, dh, totalDurM]);
+  }, [form.serviceIds, form.stylistId, form.date, bookings, dh, totalDurM, gapFrom, gapTo]);
 
   const handleSubmit = () => {
     if (!form.customerName || !form.customerPhone || !form.time) return;
@@ -3038,6 +3144,7 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
       source: form.source,
       status: "confirmed",
       ...(customDurM ? { durationMin: customDurM } : {}),
+      ...(gapOK && gapFrom && gapTo ? { freeFrom: gapFrom, freeTo: gapTo } : {}),
     });
     setSaved(true);
     setTimeout(() => { setSaved(false); onClose(); }, 1200);
@@ -3099,6 +3206,36 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
               {customDurM > 0
                 ? <>本筆佔用 <b style={{ color:"var(--copper)" }}>{customDurM} 分鐘</b>，其餘空檔可再接其他預約。</>
                 : <>燙髮等需先溝通的服務，來電確認後可填入實際所需時間，避免整段時間被佔住。</>}
+            </div>
+          </div>
+
+          {/* 中途空檔（上藥水等待時間，可接其他客人）*/}
+          <div>
+            <label className="field-label">中途空檔（可接其他客人，可留空）</label>
+            <div style={{ display:"flex", gap:".4rem", alignItems:"center", flexWrap:"wrap" }}>
+              <input type="time" step="300" value={form.freeFrom}
+                onChange={e=>setForm(p=>({...p, freeFrom:e.target.value}))}
+                className="field-input" style={{ maxWidth:130 }}/>
+              <span style={{ color:"var(--ink3)" }}>～</span>
+              <input type="time" step="300" value={form.freeTo}
+                onChange={e=>setForm(p=>({...p, freeTo:e.target.value}))}
+                className="field-input" style={{ maxWidth:130 }}/>
+              {(form.freeFrom || form.freeTo) && (
+                <button onClick={()=>setForm(p=>({...p, freeFrom:"", freeTo:""}))}
+                  className="btn-ghost" style={{ padding:".35rem .7rem", fontSize:".78rem" }}>
+                  清除
+                </button>
+              )}
+            </div>
+            <div style={{ marginTop:".35rem", fontSize:".74rem", lineHeight:1.6,
+              color: (form.freeFrom && form.freeTo && !gapOK) ? "#b06060" : "var(--ink3)" }}>
+              {(form.freeFrom && form.freeTo && !manualGapOK)
+                ? <>結束時間要晚於開始時間，目前的空檔設定不會生效。</>
+                : manualGapOK
+                  ? <>上藥水等待的 <b style={{ color:"var(--copper)" }}>{gapFrom}–{gapTo}</b> 視為有空，這段時間可以再接其他客人。</>
+                  : svcGap
+                    ? <>已依服務預設帶入空檔 <b style={{ color:"var(--copper)" }}>{gapFrom}–{gapTo}</b>，這段時間可以再接其他客人（需要調整再手動填）。</>
+                    : <>留空會套用「服務」頁為該項服務設定的預設空檔；也可以在這裡單筆指定。</>}
             </div>
           </div>
 
@@ -3626,6 +3763,18 @@ function ScheduleView({ bookings, isMobile, stylistSettings, onAddBooking, styli
                   const svcList = booking ? getBookingSvcs(booking, SERVICES) : [];
                   const svc     = svcList[0] || null;
                   const isOff   = !isStylistAvailable(st, viewDate, stylistSettings);
+                  // 這一格是否落在其他預約的作業時段內（延續格）或其中途空檔內
+                  const cellS = slotToMinutes(slot), cellE = cellS + SALON.slotMinutes;
+                  let contBk = null, gapBk = null;
+                  if (!booking) {
+                    for (const b of dayBookings) {
+                      if (b.stylistId !== st.id) continue;
+                      const segs = bookingBusySegments(b);
+                      if (segs.some(([a,z]) => cellS < z && cellE > a)) { contBk = b; break; }
+                      const bs = slotToMinutes(b.time), be = bs + getBookingDuration(b);
+                      if (cellS >= bs && cellE <= be) { gapBk = b; }
+                    }
+                  }
                   // 設計師個人上班時段之外（非整天休假，但超出本人工時）
                   const stDh    = !isOff ? getStylistDayHours(st.id, viewDate, stylistSettings) : null;
                   const sm      = slotToMinutes(slot);
@@ -3640,9 +3789,21 @@ function ScheduleView({ bookings, isMobile, stylistSettings, onAddBooking, styli
                           ? `rgba(${hexToRgb(st.color||"#c4835a")},.04)`
                           : booking
                             ? `rgba(${hexToRgb(st.color)},.1)`
-                            : "transparent",
+                            : contBk
+                              ? `rgba(${hexToRgb(st.color)},.06)`
+                              : "transparent",
                       overflow:"hidden",
                     }}>
+                      {contBk && (
+                        <div style={{ fontSize:".58rem", color:`rgba(${hexToRgb(st.color||"#c4835a")},.5)`, textAlign:"center", marginTop:".3rem", letterSpacing:".06em" }}>
+                          ↕ 作業中
+                        </div>
+                      )}
+                      {gapBk && (
+                        <div style={{ fontSize:".56rem", color:"#8aa88a", textAlign:"center", marginTop:".3rem", letterSpacing:".04em" }}>
+                          ☕ 空檔可接
+                        </div>
+                      )}
                       {isOff && !booking && <div style={{ fontSize:".70rem", color:"#cccccc", textAlign:"center", marginTop:".3rem" }}>休</div>}
                       {isOutsideHours && !booking && <div style={{ fontSize:".62rem", color:`rgba(${hexToRgb(st.color||"#c4835a")},.22)`, textAlign:"center", marginTop:".3rem", letterSpacing:".08em" }}>—</div>}
                       {booking && (
@@ -4237,10 +4398,19 @@ function ServicesMenu({ isMobile, servicesMgr, svcPhotosMgr, svcPhotos={} }) {
 
   const startEdit = (svc) => {
     setEditId(svc.id);
-    setDraft({ zh:svc.zh, desc:svc.desc, price:svc.price, priceNote:svc.priceNote||"", duration:svc.duration, category:svc.category, icon:svc.icon, color:svc.color, phoneOnly:isPhoneOnlyService(svc) });
+    setDraft({ zh:svc.zh, desc:svc.desc, price:svc.price, priceNote:svc.priceNote||"", duration:svc.duration, category:svc.category, icon:svc.icon, color:svc.color, phoneOnly:isPhoneOnlyService(svc),
+      gapAfter: svc.gapAfter != null ? String(svc.gapAfter) : "", gapLength: svc.gapLength != null ? String(svc.gapLength) : "" });
   };
   const saveEdit = (id) => {
-    servicesMgr?.updateService(id, { ...draft, duration:Number(draft.duration)||30 });
+    const gapAfter  = Number(draft.gapAfter);
+    const gapLength = Number(draft.gapLength);
+    const gapOK = gapAfter >= 0 && gapLength > 0;
+    servicesMgr?.updateService(id, {
+      ...draft,
+      duration: Number(draft.duration) || 30,
+      gapAfter:  gapOK ? gapAfter  : null,
+      gapLength: gapOK ? gapLength : null,
+    });
     setEditId(null);
   };
   const handleAdd = () => {
@@ -4401,6 +4571,11 @@ function ServicesMenu({ isMobile, servicesMgr, svcPhotosMgr, svcPhotos={} }) {
                       {svc.desc && <div style={{ fontSize:".74rem", color:"var(--ink3)", lineHeight:1.6, marginBottom:".35rem" }}>{svc.desc}</div>}
                       <div style={{ display:"flex", gap:".6rem", flexWrap:"wrap", alignItems:"center" }}>
                         <span style={{ fontSize:".68rem", color:"var(--ink3)", fontFamily:"'DM Mono',monospace" }}>⏱ {svc.duration}min</span>
+                        {getServiceGap(svc) && (
+                          <span style={{ fontSize:".66rem", padding:".05rem .45rem", borderRadius:20, background:"rgba(122,154,122,.1)", color:"#5f7a5f", border:"1px solid rgba(122,154,122,.3)", fontWeight:600 }}>
+                            ☕ 空檔 {svc.gapAfter}′ 後 {svc.gapLength} 分
+                          </span>
+                        )}
                         {isPhoneOnlyService(svc) && (
                           <span style={{ fontSize:".66rem", padding:".05rem .45rem", borderRadius:20, background:"rgba(196,131,90,.1)", color:"var(--copper)", border:"1px solid rgba(196,131,90,.3)", fontWeight:600 }}>
                             📞 需來電洽詢
@@ -4448,6 +4623,40 @@ function ServicesMenu({ isMobile, servicesMgr, svcPhotosMgr, svcPhotos={} }) {
                         <input value={draft.desc} onChange={e=>setDraft(p=>({...p,desc:e.target.value}))}
                           className="field-input" style={{ fontSize:".85rem" }} placeholder="服務說明"/>
                       </div>
+                      {/* 中途空檔預設值 */}
+                      <div style={{ marginBottom:".55rem", padding:".55rem .7rem", borderRadius:8,
+                        border:`1px solid ${(Number(draft.gapAfter)>=0 && Number(draft.gapLength)>0) ? "rgba(122,154,122,.45)" : "var(--line)"}`,
+                        background:(Number(draft.gapAfter)>=0 && Number(draft.gapLength)>0) ? "rgba(122,154,122,.06)" : "transparent" }}>
+                        <div style={{ fontSize:".8rem", fontWeight:600, color:"var(--ink2)", marginBottom:".15rem" }}>
+                          ☕ 中途空檔預設值（燙染等待時間）
+                        </div>
+                        <div style={{ fontSize:".68rem", color:"var(--ink3)", marginBottom:".45rem", lineHeight:1.5 }}>
+                          設定後，建立這項服務的預約會自動把等待時間讓出來，可以再接其他客人
+                        </div>
+                        <div style={{ display:"flex", alignItems:"center", gap:".35rem", flexWrap:"wrap", fontSize:".78rem", color:"var(--ink2)" }}>
+                          <span>開始後</span>
+                          <input type="number" min="0" step="5" inputMode="numeric"
+                            value={draft.gapAfter} onChange={e=>setDraft(p=>({...p,gapAfter:e.target.value}))}
+                            className="field-input" style={{ width:72, fontSize:".85rem" }} placeholder="60"/>
+                          <span>分鐘起，空檔</span>
+                          <input type="number" min="5" step="5" inputMode="numeric"
+                            value={draft.gapLength} onChange={e=>setDraft(p=>({...p,gapLength:e.target.value}))}
+                            className="field-input" style={{ width:72, fontSize:".85rem" }} placeholder="150"/>
+                          <span>分鐘</span>
+                          {(draft.gapAfter || draft.gapLength) && (
+                            <button onClick={()=>setDraft(p=>({...p,gapAfter:"",gapLength:""}))}
+                              className="btn-ghost" style={{ padding:".25rem .6rem", fontSize:".72rem" }}>清除</button>
+                          )}
+                        </div>
+                        {Number(draft.gapAfter)>=0 && Number(draft.gapLength)>0 && Number(draft.duration)>0 && (
+                          <div style={{ fontSize:".7rem", color:"#5f7a5f", marginTop:".4rem", lineHeight:1.6 }}>
+                            例：10:00 開始 → 作業 10:00–{minsToTime(600+Number(draft.gapAfter))}、
+                            空檔 {minsToTime(600+Number(draft.gapAfter))}–{minsToTime(Math.min(600+Number(draft.gapAfter)+Number(draft.gapLength), 600+Number(draft.duration)))}、
+                            收尾至 {minsToTime(600+Number(draft.duration))}
+                          </div>
+                        )}
+                      </div>
+
                       {/* 需來電洽詢開關 */}
                       <div onClick={()=>setDraft(p=>({...p, phoneOnly:!p.phoneOnly}))}
                         style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:".6rem",
@@ -4533,6 +4742,8 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
       stylistId:     booking.stylistId     || "",
       serviceIds:    booking.serviceIds    || [booking.serviceId].filter(Boolean),
       durationMin:   Number(booking.durationMin) > 0 ? String(booking.durationMin) : "",
+      freeFrom:      booking.freeFrom || "",
+      freeTo:        booking.freeTo   || "",
     });
     setEditing(true);
   };
@@ -4553,6 +4764,11 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
       needsAssignment: editForm.stylistId === "any" ? true : false,
       // 空白 → null：Firebase update 會移除欄位，回到依服務預設時長
       durationMin:   Number(editForm.durationMin) > 0 ? Number(editForm.durationMin) : null,
+      // 中途空檔：起迄齊全且順序正確才生效，否則清除
+      freeFrom: (editForm.freeFrom && editForm.freeTo
+                 && slotToMinutes(editForm.freeTo) > slotToMinutes(editForm.freeFrom)) ? editForm.freeFrom : null,
+      freeTo:   (editForm.freeFrom && editForm.freeTo
+                 && slotToMinutes(editForm.freeTo) > slotToMinutes(editForm.freeFrom)) ? editForm.freeTo   : null,
     });
     setEditing(false);
   };
@@ -4679,6 +4895,21 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
               {STYLISTS.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
+          {/* 中途空檔 */}
+          <div style={{ gridColumn: isMobile?"1":"1 / -1" }}>
+            <label style={lStyle}>中途空檔（燙染等待時間，此段可接其他客人）</label>
+            <div style={{ display:"flex", gap:".4rem", alignItems:"center" }}>
+              <input type="time" step="300" value={editForm.freeFrom} onChange={ef("freeFrom")} style={{ ...iStyle, maxWidth:130 }}/>
+              <span style={{ color:"var(--ink3)" }}>～</span>
+              <input type="time" step="300" value={editForm.freeTo} onChange={ef("freeTo")} style={{ ...iStyle, maxWidth:130 }}/>
+              {(editForm.freeFrom || editForm.freeTo) && (
+                <button onClick={()=>setEditForm(p=>({...p, freeFrom:"", freeTo:""}))}
+                  style={{ padding:".3rem .6rem", borderRadius:6, border:"1px solid var(--line)", background:"transparent", color:"var(--ink3)", fontSize:".76rem", cursor:"pointer", whiteSpace:"nowrap" }}>
+                  清除
+                </button>
+              )}
+            </div>
+          </div>
           {/* 作業時長 */}
           <div><label style={lStyle}>實際作業時長（分鐘）</label>
             <input type="number" min="5" step="5" inputMode="numeric"
@@ -4743,6 +4974,14 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
           <div style={{ fontSize:".94rem", color:"var(--ink)", fontWeight:600 }}>{svcs.map(s=>s.zh).join("・") || booking.serviceId}</div>
           <div style={{ fontSize:".86rem", color: st?.color || "#c4900a" }}>
             {st ? `${st.icon} ${st.name}` : "🕘 待指派設計師"} · {booking.time}
+            <span style={{ color:"var(--ink3)" }}>
+              –{minsToTime(slotToMinutes(booking.time) + getBookingDuration(booking))}
+            </span>
+            {booking.freeFrom && booking.freeTo && (
+              <span style={{ marginLeft:".4rem", fontSize:".72rem", color:"#7a9a7a" }}>
+                ☕ {booking.freeFrom}–{booking.freeTo} 空檔
+              </span>
+            )}
           </div>
         </div>
         <span style={{ padding:".12rem .5rem", borderRadius:20, fontSize:".70rem", background:`rgba(${hexToRgb(STATUS_COLOR[booking.status])},.12)`, color:STATUS_COLOR[booking.status], border:`1px solid rgba(${hexToRgb(STATUS_COLOR[booking.status])},.25)` }}>
