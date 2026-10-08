@@ -1279,6 +1279,103 @@ function useCustomers() {
 const ADMIN_TABS = new Set(["calendar","schedule","stylists","customers","line","rules"]);
 const DEFAULT_PIN = "0000";
 
+/* ═══════════════════════════════════════════════════════════
+   店長權限（客戶電話）
+   後台一般權限看得到預約與班表，但電話一律遮蔽；
+   需要另一組「店長密碼」才會顯示完整號碼。
+═══════════════════════════════════════════════════════════ */
+const DEFAULT_OWNER_PIN = "1234";
+
+/** 遮蔽電話：0958635699 → 0958***699 */
+function maskPhone(phone) {
+  const raw = String(phone || "").trim();
+  if (!raw) return "";
+  const digits = raw.replace(/[^0-9]/g, "");
+  if (digits.length < 6) return "•".repeat(Math.max(raw.length, 3));
+  return `${digits.slice(0, 4)}●●●${digits.slice(-3)}`;
+}
+
+/** 店長權限 context：canSee=是否可看電話，request=開啟解鎖視窗 */
+const OwnerCtx = React.createContext({ canSee: false, request: () => {} });
+
+/** 電話顯示元件：未解鎖顯示遮蔽碼，點一下可要求店長解鎖 */
+function PhoneText({ phone, style, linkStyle }) {
+  const { canSee, request } = React.useContext(OwnerCtx);
+  if (!phone) return null;
+  if (canSee) {
+    return (
+      <a href={`tel:${String(phone).replace(/[^0-9+]/g, "")}`}
+        style={{ color:"inherit", textDecoration:"none", ...style, ...linkStyle }}>
+        {phone}
+      </a>
+    );
+  }
+  return (
+    <span onClick={(e)=>{ e.stopPropagation(); request(); }}
+      title="需店長權限才能檢視完整號碼"
+      style={{ cursor:"pointer", display:"inline-flex", alignItems:"center", gap:".25rem", ...style }}>
+      <span style={{ letterSpacing:".04em" }}>{maskPhone(phone)}</span>
+      <span style={{ fontSize:".82em", opacity:.55 }}>🔒</span>
+    </span>
+  );
+}
+
+function useOwnerAuth() {
+  const [unlocked, setUnlocked] = useState(false);
+  const [pin, setPin]           = useState(DEFAULT_OWNER_PIN);
+
+  useEffect(() => {
+    return fbListen("je_owner_pin", val => { if (val) setPin(val); });
+  }, []);
+
+  const unlock    = (input) => { if (input === pin) { setUnlocked(true); return true; } return false; };
+  const lock      = () => setUnlocked(false);
+  const changePin = (newPin) => { setPin(newPin); fbWrite("je_owner_pin", newPin); };
+  const isDefault = pin === DEFAULT_OWNER_PIN;
+
+  return { unlocked, unlock, lock, pin, changePin, isDefault };
+}
+
+/** 店長解鎖視窗 */
+function OwnerUnlockModal({ ownerAuth, onClose, isMobile }) {
+  const [input, setInput] = useState("");
+  const [err, setErr]     = useState("");
+  const submit = () => {
+    if (ownerAuth.unlock(input.trim())) { onClose(); }
+    else { setErr("密碼不正確"); setInput(""); }
+  };
+  return (
+    <div onClick={e=>{ if (e.target === e.currentTarget) onClose(); }}
+      style={{ position:"fixed", inset:0, zIndex:1200, background:"rgba(28,24,22,.55)",
+        display:"flex", alignItems:"center", justifyContent:"center", padding:"1.25rem" }}>
+      <div style={{ width:"100%", maxWidth:340, background:"var(--card)", borderRadius:16,
+        boxShadow:"0 20px 60px rgba(28,24,22,.3)", padding: isMobile?"1.4rem 1.2rem":"1.6rem 1.4rem", textAlign:"center" }}>
+        <div style={{ fontSize:"1.8rem", lineHeight:1, marginBottom:".6rem" }}>🔐</div>
+        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.2rem", fontWeight:600, color:"var(--ink)" }}>
+          店長權限
+        </div>
+        <div style={{ marginTop:".4rem", fontSize:".82rem", color:"var(--ink3)", lineHeight:1.7 }}>
+          客戶電話屬個人資料，輸入店長密碼後才會顯示完整號碼。
+        </div>
+        <input type="password" inputMode="numeric" autoFocus value={input}
+          onChange={e=>{ setInput(e.target.value); setErr(""); }}
+          onKeyDown={e=>{ if (e.key === "Enter") submit(); }}
+          placeholder="輸入店長密碼"
+          style={{ width:"100%", marginTop:"1rem", padding:".7rem .8rem", borderRadius:10,
+            border:`1px solid ${err ? "#c48080" : "var(--line)"}`, fontSize:"1.05rem", textAlign:"center",
+            letterSpacing:".3em", outline:"none", background:"var(--bg)", color:"var(--ink)" }}/>
+        {err && <div style={{ marginTop:".4rem", fontSize:".8rem", color:"#b06060" }}>{err}</div>}
+        <div style={{ display:"flex", gap:".5rem", marginTop:"1rem" }}>
+          <button onClick={onClose} className="btn-ghost"
+            style={{ flex:1, padding:".65rem", borderRadius:10, fontSize:".88rem" }}>取消</button>
+          <button onClick={submit} className="btn-copper"
+            style={{ flex:1, padding:".65rem", borderRadius:10, fontSize:".88rem", fontWeight:600 }}>解鎖</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function useAdminAuth() {
   const [unlocked, setUnlocked] = useState(false);
   const [pin, setPin]           = useState(DEFAULT_PIN);
@@ -3672,9 +3769,9 @@ function ScheduleView({ bookings, isMobile, stylistSettings, onAddBooking, styli
                 <span style={{ fontWeight:700, fontSize:".86rem", color:"var(--ink)" }}>{b.time}</span>
                 <span style={{ fontSize:".84rem", color:"var(--ink2)" }}>{b.customerName || "（未填姓名）"}</span>
                 {b.customerPhone && (
-                  <a href={`tel:${b.customerPhone}`} style={{ fontSize:".78rem", color:"#607090", textDecoration:"none" }}>
-                    📞 {b.customerPhone}
-                  </a>
+                  <span style={{ fontSize:".78rem", color:"#607090" }}>
+                    📞 <PhoneText phone={b.customerPhone}/>
+                  </span>
                 )}
                 {b.isGroup && (
                   <span style={{ fontSize:".72rem", color:"var(--ink3)" }}>👨‍👩‍👧 家庭</span>
@@ -4876,7 +4973,15 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
           </div>
           {/* 電話 */}
           <div><label style={lStyle}>聯絡電話</label>
-            <input value={editForm.customerPhone} onChange={ef("customerPhone")} style={iStyle} placeholder="電話"/>
+            <OwnerCtx.Consumer>
+              {({ canSee, request }) => canSee
+                ? <input value={editForm.customerPhone} onChange={ef("customerPhone")} style={iStyle} placeholder="電話"/>
+                : <div onClick={request} title="需店長權限才能檢視或修改"
+                    style={{ ...iStyle, cursor:"pointer", color:"var(--ink3)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                    <span>{maskPhone(editForm.customerPhone) || "—"}</span>
+                    <span style={{ fontSize:".8rem", opacity:.6 }}>🔒</span>
+                  </div>}
+            </OwnerCtx.Consumer>
           </div>
           {/* 日期 */}
           <div><label style={lStyle}>預約日期 *</label>
@@ -5003,7 +5108,7 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
       <div style={{ padding:".65rem .9rem", display:"grid", gridTemplateColumns: isMobile?"1fr":"1fr 1fr", gap:".3rem .8rem" }}>
         {[
           ["顧客", booking.customerName],
-          ["電話", booking.customerPhone],
+          ["電話", booking.customerPhone ? <PhoneText phone={booking.customerPhone}/> : ""],
           ...(booking.lineId?[["LINE ID", booking.lineId]]:[]),
           ["日期", displayDate(booking.date)],
           ["費用", svcs.map(s=>`${s.price}${s.priceNote||""}`).join(" ＋ ") || "—"],
@@ -5237,7 +5342,9 @@ function CustomersView({ customers, onDelete, bookings, isMobile }) {
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.32rem", fontWeight:500, color:"var(--ink)" }}>{cu.name}</div>
-                  <div style={{ fontSize:"1.32rem", color:"var(--ink3)", marginTop:".1rem", fontFamily:"'DM Mono',monospace" }}>{cu.phone}</div>
+                  <div style={{ fontSize:"1.32rem", color:"var(--ink3)", marginTop:".1rem", fontFamily:"'DM Mono',monospace" }}>
+                    <PhoneText phone={cu.phone}/>
+                  </div>
                 </div>
                 <div style={{ textAlign:"right" }}>
                   <div style={{ fontSize:".86rem", color:"var(--copper)", fontWeight:600 }}>{cu.visits||0} 次</div>
@@ -5284,10 +5391,20 @@ function CustomersView({ customers, onDelete, bookings, isMobile }) {
 /* ═══════════════════════════════════════════════════════════
    LINE SETTINGS VIEW
 ═══════════════════════════════════════════════════════════ */
-function BookingRulesView({ settings = {}, onSave, isMobile }) {
+function BookingRulesView({ settings = {}, onSave, isMobile, ownerAuth, onOwnerUnlock }) {
   const [local, setLocal] = useState(settings);
   useEffect(() => setLocal(settings), [settings]);
   const [saved, setSaved] = useState(false);
+  const [pinDraft, setPinDraft] = useState("");
+  const [pinSaved, setPinSaved] = useState(false);
+
+  const savePin = () => {
+    const v = pinDraft.trim();
+    if (!/^\d{4,8}$/.test(v)) return;
+    ownerAuth?.changePin(v);
+    setPinDraft(""); setPinSaved(true);
+    setTimeout(() => setPinSaved(false), 2500);
+  };
 
   const handleSave = () => {
     onSave(local);
@@ -5299,6 +5416,68 @@ function BookingRulesView({ settings = {}, onSave, isMobile }) {
     <div style={{ padding: isMobile?"0":"0 .5rem" }}>
       <div style={{ fontSize:".78rem", letterSpacing:".14em", color:"var(--ink3)",
         textTransform:"uppercase", marginBottom:"1.2rem" }}>預約規則設定</div>
+
+      {/* ── 店長權限：客戶電話 ── */}
+      {ownerAuth && (
+        <div style={{ background:"var(--card)", border:"1px solid var(--line)",
+          borderRadius:"var(--r)", overflow:"hidden", marginBottom:"1rem" }}>
+          <div style={{ padding:"1rem 1.1rem" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:".6rem", flexWrap:"wrap" }}>
+              <div>
+                <div style={{ fontSize:".88rem", fontWeight:500, color:"var(--ink)" }}>
+                  👑 店長權限 · 客戶電話
+                </div>
+                <div style={{ fontSize:".74rem", color:"var(--ink3)", marginTop:".2rem", lineHeight:1.6 }}>
+                  客戶電話預設遮蔽（0958●●●699），輸入店長密碼後才顯示完整號碼
+                </div>
+              </div>
+              <span style={{ padding:".2rem .6rem", borderRadius:20, fontSize:".76rem", whiteSpace:"nowrap",
+                background: ownerAuth.unlocked ? "var(--copper-bg)" : "rgba(0,0,0,.04)",
+                border:`1px solid ${ownerAuth.unlocked ? "var(--copper-bd)" : "var(--line)"}`,
+                color: ownerAuth.unlocked ? "var(--copper)" : "var(--ink3)" }}>
+                {ownerAuth.unlocked ? "已解鎖" : "已鎖定"}
+              </span>
+            </div>
+
+            {ownerAuth.isDefault && (
+              <div style={{ marginTop:".7rem", padding:".6rem .75rem", borderRadius:8,
+                background:"rgba(196,160,74,.09)", border:"1px solid rgba(196,160,74,.4)",
+                fontSize:".78rem", color:"var(--ink2)", lineHeight:1.65 }}>
+                ⚠️ 目前仍是預設密碼 <b>{DEFAULT_OWNER_PIN}</b>，請盡快改成只有你知道的號碼。
+              </div>
+            )}
+
+            {ownerAuth.unlocked ? (
+              <div style={{ marginTop:".8rem" }}>
+                <label style={{ display:"block", fontSize:".72rem", color:"var(--ink3)", marginBottom:".25rem" }}>
+                  變更店長密碼（4–8 位數字）
+                </label>
+                <div style={{ display:"flex", gap:".5rem", flexWrap:"wrap" }}>
+                  <input type="password" inputMode="numeric" value={pinDraft}
+                    onChange={e=>setPinDraft(e.target.value)}
+                    placeholder="輸入新密碼"
+                    style={{ flex:1, minWidth:140, padding:".5rem .7rem", borderRadius:8,
+                      border:"1px solid var(--line)", fontSize:".9rem", outline:"none",
+                      background:"var(--bg)", color:"var(--ink)", letterSpacing:".2em" }}/>
+                  <button onClick={savePin} disabled={!/^\d{4,8}$/.test(pinDraft.trim())}
+                    className="btn-copper" style={{ padding:".5rem 1rem", fontSize:".85rem", borderRadius:8 }}>
+                    {pinSaved ? "✓ 已更新" : "更新密碼"}
+                  </button>
+                  <button onClick={()=>ownerAuth.lock()} className="btn-ghost"
+                    style={{ padding:".5rem .9rem", fontSize:".85rem", borderRadius:8 }}>
+                    鎖回
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={onOwnerUnlock} className="btn-ghost"
+                style={{ marginTop:".8rem", padding:".5rem 1rem", fontSize:".85rem", borderRadius:8 }}>
+                🔐 解鎖店長權限
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div style={{ background:"var(--card)", border:"1px solid var(--line)",
         borderRadius:"var(--r)", overflow:"hidden", marginBottom:"1rem" }}>
@@ -5578,7 +5757,7 @@ function LINESettingsView({ settings, onSave, bookings, isMobile, adminAuth }) {
                     <div style={{ fontSize:".86rem", color:"#06C755" }}>{b.lineId}</div>
                   </div>
                 </div>
-                <div style={{ fontSize:".84rem", color:"#999999" }}>{b.customerPhone}</div>
+                <div style={{ fontSize:".84rem", color:"#999999" }}><PhoneText phone={b.customerPhone}/></div>
               </div>
             ))}
           </div>
@@ -5874,6 +6053,8 @@ export default function SalonApp() {
   const salonConfig  = useSalonSettings();
   const customerMgr  = useCustomers();
   const adminAuth    = useAdminAuth();
+  const ownerAuth    = useOwnerAuth();
+  const [showOwnerUnlock, setShowOwnerUnlock] = useState(false);
   const stylistsMgr  = useStylists();
   STYLISTS = stylistsMgr.stylists;
   const servicesMgr  = useServices();
@@ -5973,6 +6154,10 @@ export default function SalonApp() {
 
   return (
     <ErrorBoundary>
+    <OwnerCtx.Provider value={{ canSee: ownerAuth.unlocked, request: () => setShowOwnerUnlock(true) }}>
+    {showOwnerUnlock && (
+      <OwnerUnlockModal ownerAuth={ownerAuth} onClose={()=>setShowOwnerUnlock(false)} isMobile={isMobile}/>
+    )}
     <div style={{ minHeight:"100vh", background:"var(--bg)", color:"var(--ink)", fontFamily:"'DM Sans',sans-serif" }}>
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Playfair+Display:wght@400;500;600&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400&display=swap"/>
       <style>{`
@@ -6140,7 +6325,20 @@ export default function SalonApp() {
               </div>
             )}
             {adminAuth.unlocked && (
-              <button onClick={()=>{ adminAuth.lock(); setTab("book"); }}
+              <button onClick={()=>{ ownerAuth.unlocked ? ownerAuth.lock() : setShowOwnerUnlock(true); }}
+                title={ownerAuth.unlocked ? "店長權限已開啟（點擊鎖回）" : "開啟店長權限以檢視客戶電話"}
+                style={{ padding:".28rem .6rem", borderRadius:20, fontSize:".86rem", cursor:"pointer",
+                  border:`1px solid ${ownerAuth.unlocked ? "var(--copper-bd)" : "var(--line)"}`,
+                  background: ownerAuth.unlocked ? "var(--copper-bg)" : "var(--card)",
+                  color: ownerAuth.unlocked ? "var(--copper)" : "var(--ink3)" }}>
+                {ownerAuth.unlocked ? "👑" : "🔒"}
+                <span style={{ display:isMobile?"none":"inline", marginLeft:".25rem" }}>
+                  {ownerAuth.unlocked ? "店長" : "電話"}
+                </span>
+              </button>
+            )}
+            {adminAuth.unlocked && (
+              <button onClick={()=>{ adminAuth.lock(); ownerAuth.lock(); setTab("book"); }}
                 style={{ padding:".28rem .65rem", borderRadius:20, border:"1px solid var(--line)", background:"var(--card)", color:"var(--ink3)", fontSize:".86rem", cursor:"pointer", display:"flex", alignItems:"center", gap:".3rem", touchAction:"manipulation" }}>
                 🔓 <span style={{ display:isMobile?"none":"inline" }}>鎖定</span>
               </button>
@@ -6191,7 +6389,7 @@ export default function SalonApp() {
                       {tab==="stylists"  && <StylistRoster bookings={bookings} isMobile={isMobile} stylistMgr={stylistMgr} stylistsMgr={stylistsMgr}/>}
                       {tab==="customers" && <CustomersView customers={customerMgr.customers} onDelete={customerMgr.deleteCustomer} bookings={bookings} isMobile={isMobile}/>}
                       {tab==="line"      && <LINESettingsView settings={lineSettings} onSave={saveLineSettings} bookings={bookings} isMobile={isMobile} adminAuth={adminAuth}/>}
-                      {tab==="rules"     && <BookingRulesView settings={salonSettings} onSave={saveSalonSettings} isMobile={isMobile}/>}
+                      {tab==="rules"     && <BookingRulesView ownerAuth={ownerAuth} onOwnerUnlock={()=>setShowOwnerUnlock(true)} settings={salonSettings} onSave={saveSalonSettings} isMobile={isMobile}/>}
                     </>
                   : <AdminLockScreen onUnlock={adminAuth.unlock} isMobile={isMobile}/>
               )}
@@ -6200,6 +6398,7 @@ export default function SalonApp() {
       </main>
 
     </div>
+    </OwnerCtx.Provider>
     </ErrorBoundary>
   );
 }
