@@ -17,6 +17,24 @@ export const TG_CHAT_ID = process.env.TELEGRAM_CHAT_ID   || "";
 /** 是否同時保留 LINE 推播（過渡期備援開關） */
 export const ALSO_LINE = String(process.env.NOTIFY_ADMIN_VIA_LINE || "").toLowerCase() === "true";
 
+/**
+ * 店家通知是否遮蔽顧客電話（個資保護）。
+ * 設環境變數 MASK_PHONE_IN_NOTIFY=false 可改回顯示完整號碼。
+ * 完整號碼仍可在後台以「店長權限」查看。
+ */
+export const MASK_PHONE =
+  String(process.env.MASK_PHONE_IN_NOTIFY || "true").toLowerCase() !== "false";
+
+/** 0958635699 → 0958●●●699 */
+export function maskPhone(phone) {
+  const raw = String(phone == null ? "" : phone).trim();
+  if (!raw) return "";
+  if (!MASK_PHONE) return raw;
+  const d = raw.replace(/[^0-9]/g, "");
+  if (d.length < 6) return "●●●";
+  return `${d.slice(0, 4)}●●●${d.slice(-3)}`;
+}
+
 /** HTML 特殊字元跳脫（Telegram parse_mode=HTML 需要） */
 export function esc(s) {
   return String(s == null ? "" : s)
@@ -100,7 +118,7 @@ export function buildNewBookingText(booking = {}, svcName, stylistName) {
     line("設計師",  stylistName),
     line("日期",    `${booking.date || ""} ${booking.time || ""}`.trim()),
     line("顧客",    booking.customerName),
-    line("電話",    booking.customerPhone),
+    line("電話",    maskPhone(booking.customerPhone)),
     line("備註",    booking.notes),
     line("LINE ID", booking.lineId),
   ].filter(Boolean);
@@ -119,7 +137,7 @@ export function buildCancelText(booking = {}, svcName, stylistName, cancelledBy)
     line("設計師", stylistName),
     line("日期",   `${booking.date || ""} ${booking.time || ""}`.trim()),
     line("顧客",   booking.customerName),
-    line("電話",   booking.customerPhone),
+    line("電話",   maskPhone(booking.customerPhone)),
   ].filter(Boolean);
 
   const who =

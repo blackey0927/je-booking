@@ -3,6 +3,8 @@
  */
 import https  from "https";
 import crypto from "crypto";
+// 電話遮蔽規則與 Telegram 通知共用（由 MASK_PHONE_IN_NOTIFY 控制）
+import { maskPhone } from "./_telegram.js";
 
 export const TOKEN     = process.env.LINE_CHANNEL_ACCESS_TOKEN || "";
 export const SECRET    = process.env.LINE_CHANNEL_SECRET       || "";
@@ -82,7 +84,7 @@ export function buildNewBookingFlex(booking, svcName, stylistName, cancelUrl) {
     row("設計師", stylistName),
     row("日期",   `${booking.date || ""} ${booking.time || ""}`),
     row("顧客",   booking.customerName),
-    row("電話",   booking.customerPhone),
+    row("電話",   maskPhone(booking.customerPhone)),
   ];
   if (booking.notes)  rows.push(row("備注",    booking.notes));
   if (booking.lineId) rows.push(row("LINE ID", booking.lineId));
@@ -117,7 +119,7 @@ export function buildCancelFlex(booking) {
         type: "box", layout: "vertical", spacing: "sm", paddingAll: "14px",
         contents: [
           row("顧客", booking.customerName),
-          row("電話", booking.customerPhone),
+          row("電話", maskPhone(booking.customerPhone)),
           row("日期", `${booking.date || ""} ${booking.time || ""}`),
         ],
       },
