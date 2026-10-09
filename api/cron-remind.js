@@ -28,6 +28,23 @@ const DB_URL = (process.env.FIREBASE_DB_URL ||
 const REMIND_CUSTOMERS = String(process.env.REMIND_CUSTOMERS || "true").toLowerCase() !== "false";
 
 const SALON_NAME = "JE染燙快剪屋";
+
+/**
+ * 店家群組清單是否遮蔽顧客電話（個資保護）。
+ * 設環境變數 MASK_PHONE_IN_NOTIFY=false 可改回顯示完整號碼。
+ * 完整號碼仍可在後台用「店長權限」查看。
+ */
+const MASK_PHONE = String(process.env.MASK_PHONE_IN_NOTIFY || "true").toLowerCase() !== "false";
+
+/** 0958635699 → 0958●●●699 */
+function maskPhone(phone) {
+  const raw = String(phone || "").trim();
+  if (!raw) return "";
+  if (!MASK_PHONE) return raw;
+  const d = raw.replace(/[^0-9]/g, "");
+  if (d.length < 6) return "●●●";
+  return `${d.slice(0, 4)}●●●${d.slice(-3)}`;
+}
 const SALON_ADDR = "台中市西屯區太原路一段77號";
 
 /* ── Firebase REST helpers ───────────────────────────── */
@@ -180,7 +197,7 @@ export default async function handler(req, res) {
         ];
         let s = `${i + 1}. ${parts.join("　")}`;
         s += `\n　　${esc(svcName(b) || "—")}`;
-        if (b.customerPhone) s += `　📞 ${esc(b.customerPhone)}`;
+        if (b.customerPhone) s += `　📞 ${esc(maskPhone(b.customerPhone))}`;
         if (b.notes)        s += `\n　　📝 ${esc(b.notes)}`;
         if (b.isGroup)      s += `\n　　👨‍👩‍👧 家庭預約（${b.groupSize || "?"}人）`;
         return s;
