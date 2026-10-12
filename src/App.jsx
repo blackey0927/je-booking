@@ -1281,8 +1281,8 @@ const DEFAULT_PIN = "0000";
 
 /* ═══════════════════════════════════════════════════════════
    店長權限（客戶電話）
-   後台一般權限看得到預約與班表，但電話一律遮蔽；
-   需要另一組「店長密碼」才會顯示完整號碼。
+   「客戶」頁的電話一律遮蔽，需另一組「店長密碼」才顯示完整號碼。
+   行事曆、時刻表等日常作業畫面維持顯示完整號碼，方便聯絡客人。
 ═══════════════════════════════════════════════════════════ */
 const DEFAULT_OWNER_PIN = "1234";
 
@@ -3769,9 +3769,10 @@ function ScheduleView({ bookings, isMobile, stylistSettings, onAddBooking, styli
                 <span style={{ fontWeight:700, fontSize:".86rem", color:"var(--ink)" }}>{b.time}</span>
                 <span style={{ fontSize:".84rem", color:"var(--ink2)" }}>{b.customerName || "（未填姓名）"}</span>
                 {b.customerPhone && (
-                  <span style={{ fontSize:".78rem", color:"#607090" }}>
-                    📞 <PhoneText phone={b.customerPhone}/>
-                  </span>
+                  <a href={`tel:${String(b.customerPhone).replace(/[^0-9+]/g, "")}`}
+                    style={{ fontSize:".78rem", color:"#607090", textDecoration:"none" }}>
+                    📞 {b.customerPhone}
+                  </a>
                 )}
                 {b.isGroup && (
                   <span style={{ fontSize:".72rem", color:"var(--ink3)" }}>👨‍👩‍👧 家庭</span>
@@ -4973,15 +4974,7 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
           </div>
           {/* 電話 */}
           <div><label style={lStyle}>聯絡電話</label>
-            <OwnerCtx.Consumer>
-              {({ canSee, request }) => canSee
-                ? <input value={editForm.customerPhone} onChange={ef("customerPhone")} style={iStyle} placeholder="電話"/>
-                : <div onClick={request} title="需店長權限才能檢視或修改"
-                    style={{ ...iStyle, cursor:"pointer", color:"var(--ink3)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                    <span>{maskPhone(editForm.customerPhone) || "—"}</span>
-                    <span style={{ fontSize:".8rem", opacity:.6 }}>🔒</span>
-                  </div>}
-            </OwnerCtx.Consumer>
+            <input value={editForm.customerPhone} onChange={ef("customerPhone")} style={iStyle} placeholder="電話"/>
           </div>
           {/* 日期 */}
           <div><label style={lStyle}>預約日期 *</label>
@@ -5108,7 +5101,10 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
       <div style={{ padding:".65rem .9rem", display:"grid", gridTemplateColumns: isMobile?"1fr":"1fr 1fr", gap:".3rem .8rem" }}>
         {[
           ["顧客", booking.customerName],
-          ["電話", booking.customerPhone ? <PhoneText phone={booking.customerPhone}/> : ""],
+          ["電話", booking.customerPhone
+            ? <a href={`tel:${String(booking.customerPhone).replace(/[^0-9+]/g, "")}`}
+                style={{ color:"inherit", textDecoration:"none" }}>{booking.customerPhone}</a>
+            : ""],
           ...(booking.lineId?[["LINE ID", booking.lineId]]:[]),
           ["日期", displayDate(booking.date)],
           ["費用", svcs.map(s=>`${s.price}${s.priceNote||""}`).join(" ＋ ") || "—"],
@@ -5757,7 +5753,7 @@ function LINESettingsView({ settings, onSave, bookings, isMobile, adminAuth }) {
                     <div style={{ fontSize:".86rem", color:"#06C755" }}>{b.lineId}</div>
                   </div>
                 </div>
-                <div style={{ fontSize:".84rem", color:"#999999" }}><PhoneText phone={b.customerPhone}/></div>
+                <div style={{ fontSize:".84rem", color:"#999999" }}>{b.customerPhone}</div>
               </div>
             ))}
           </div>
