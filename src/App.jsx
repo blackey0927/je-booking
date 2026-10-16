@@ -3019,42 +3019,16 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
               />
             </div>
           ))}
-          {/* LINE ID 欄位 — 已在前置步驟設定，這裡僅供確認/修改 */}
-          <div style={{ marginBottom:".75rem" }}>
-            <label className="field-label">
-              LINE ID（選填）
-              {form.lineId && <span style={{ marginLeft:".5rem", fontSize:".7rem", color:"#06C755", fontWeight:400 }}>✅ 已設定，可收到通知</span>}
-            </label>
-            <div style={{ display:"flex", gap:".5rem", alignItems:"stretch" }}>
-              <input type="text"
-                placeholder="Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                value={form.lineId}
-                onChange={e=>setForm(p=>({...p,lineId:e.target.value.trim()}))}
-                style={{
-                  flex:1, padding:".65rem .8rem",
-                  fontSize:isMobile?".78rem":".85rem",
-                  fontFamily:"'DM Mono',monospace", letterSpacing:".03em",
-                  background:"var(--bg2)", border:`1.5px solid ${/^U[0-9a-zA-Z]{32}$/.test(form.lineId)?"rgba(6,199,85,.5)":"var(--line)"}`,
-                  borderRadius:"var(--r-sm)", color:"var(--ink)", outline:"none",
-                }}
-              />
-              {navigator.clipboard && (
-                <button onClick={async()=>{
-                  try {
-                    const text = await navigator.clipboard.readText();
-                    setForm(p=>({...p, lineId:text.trim()}));
-                  } catch(_) {}
-                }}
-                  style={{ padding:".65rem .9rem", borderRadius:"var(--r-sm)", border:"1px solid var(--line)", background:"var(--card)", color:"var(--ink2)", fontSize:".82rem", cursor:"pointer", whiteSpace:"nowrap", flexShrink:0 }}>
-                  📋 貼上
-                </button>
-              )}
+          {/* LINE 官方帳號 — 加好友宣傳（LINE 推播已停用，不再請顧客填 userId）*/}
+          <div style={{ marginBottom:".75rem", padding:".6rem .8rem", borderRadius:"var(--r-sm)",
+            background:"rgba(6,199,85,.05)", border:"1px solid rgba(6,199,85,.18)" }}>
+            <div style={{ fontSize:".78rem", color:"var(--ink3)", lineHeight:1.7 }}>
+              <a href={`https://line.me/R/ti/p/${SALON.lineOaId}`} target="_blank" rel="noreferrer"
+                style={{ color:"#06C755", textDecoration:"none", fontWeight:600 }}>
+                加入 {SALON.lineOaId} 好友
+              </a>
+              ，線上預約系統帶著走
             </div>
-            {!form.lineId && (
-              <div style={{ marginTop:".35rem", fontSize:".74rem", color:"var(--ink4)", lineHeight:1.6 }}>
-                未設定？<a href={`https://line.me/R/ti/p/${SALON.lineOaId}`} target="_blank" rel="noreferrer" style={{ color:"#06C755", textDecoration:"none", fontWeight:600 }}>加入 {SALON.lineOaId}</a>，傳送「查詢我的預約」取得 userId 後貼上
-              </div>
-            )}
           </div>
           {/* 備注欄位 */}
           {[
@@ -3141,12 +3115,26 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
             </div>
           )}
 
+          {/* 備註：請截圖備查 */}
+          <div style={{
+            width:"100%", maxWidth:420, margin:"0 auto 1rem",
+            padding:".85rem 1rem", borderRadius:"var(--r)",
+            background:"rgba(196,131,90,.07)", border:"1px solid var(--copper-bd)",
+            display:"flex", gap:".6rem", alignItems:"flex-start", textAlign:"left",
+          }}>
+            <span style={{ fontSize:"1.05rem", lineHeight:1.5 }}>📸</span>
+            <div style={{ fontSize:".84rem", color:"var(--ink2)", lineHeight:1.8 }}>
+              <b style={{ color:"var(--copper)" }}>請截圖備查</b>，
+              或是在系統首頁上方點選「<b>查詢預約</b>」，確保為您的服務安排
+            </div>
+          </div>
+
           {/* Action buttons */}
           <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:".7rem", width:"100%", maxWidth:320, margin:"0 auto" }}>
             <a href={`https://line.me/R/ti/p/${SALON.lineOaId}`} target="_blank" rel="noreferrer"
               style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:".5rem", width:"100%", padding:".75rem 1rem", background:"rgba(6,199,85,.08)", border:"1px solid rgba(6,199,85,.3)", borderRadius:"var(--r-sm)", color:"#06C755", fontSize:".9rem", fontWeight:600, textDecoration:"none" }}>
               <span style={{ fontSize:"1.1rem" }}>💬</span>
-              加入 LINE 官方帳號，接收預約通知
+              加入 LINE 官方帳號，線上預約系統帶著走
             </a>
             {!done.isGroup && done.id && done.cancelToken && (
               <a href={`${window.location.origin}${window.location.pathname}?cancel=${done.id}&token=${done.cancelToken}`}
@@ -3157,9 +3145,6 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
             <button onClick={reset} className="btn-ghost" style={{ width:"100%", padding:".72rem 1rem" }}>
               再次預約
             </button>
-            <p style={{ fontSize:".78rem", color:"var(--ink3)", textAlign:"center", lineHeight:1.6, margin:0 }}>
-              💡 之後想確認預約狀態，隨時可至上方「<b>查詢預約</b>」頁籤查看
-            </p>
           </div>
 
           {/* ── 溫暖結尾：預約守則 Info Card ── */}
@@ -3636,16 +3621,6 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
             <div>
               <label className="field-label">電話 *</label>
               <input value={form.customerPhone} onChange={e=>setForm(p=>({...p,customerPhone:e.target.value}))} placeholder="聯絡電話" className="field-input" type="tel"/>
-            </div>
-          </div>
-          <div>
-            <label className="field-label">LINE ID（選填）</label>
-            <input value={form.lineId} onChange={e=>setForm(p=>({...p,lineId:e.target.value}))} placeholder="U 開頭的 userId，例如：Uab12cd34ef56..." className="field-input"/>
-            <div style={{ marginTop:".35rem", padding:".45rem .7rem", background:"rgba(6,199,85,.06)", border:"1px solid rgba(6,199,85,.2)", borderRadius:6, fontSize:".74rem", color:"#3a7a50", lineHeight:1.65 }}>
-              💬 需填入 U 開頭的 userId 才可推播通知。引導顧客加入&nbsp;
-              <a href={`https://line.me/R/ti/p/${SALON.lineOaId}`} target="_blank" rel="noreferrer"
-                style={{ color:"#06C755", fontWeight:600, textDecoration:"none" }}>{SALON.lineOaId}</a>
-              ，傳送「<b>查詢我的預約</b>」即可取得。
             </div>
           </div>
           <div>
@@ -5026,17 +5001,6 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
 
   const ef = (field) => (e) => setEditForm(p => ({ ...p, [field]: e.target.value }));
 
-  const handleLineNotify = async (type) => {
-    setLineStatus("sending");
-    const res = await sendLINENotify({
-      webhookUrl: lineSettings?.webhookUrl,
-      type, booking, svc, stylist:st,
-    });
-    setLineStatus(res.ok ? "ok" : "err");
-    setLineMsg(res.msg || "");
-    setTimeout(() => setLineStatus(null), 3500);
-  };
-
   // 補發「店主通知」（呼叫 /notify-new，與自動通知相同路徑）
   const handleResendAdminNotify = async () => {
     if (!lineSettings?.webhookUrl) return;
@@ -5312,28 +5276,11 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
           <button onClick={()=>setConfirm(true)} style={{ ...actionBtn, borderColor:"rgba(196,160,160,.2)", color:"#6a4a4a" }}>刪除</button>
         </div>
       )}
-      {/* LINE Notify row */}
-      {!confirm && lineSettings?.webhookUrl && (
+      {/* 店主通知列（LINE 顧客推播已停用，僅保留店家 Telegram 通知狀態）*/}
+      {!confirm && lineSettings?.webhookUrl && booking.source === "online" && (
         <div style={{ padding:".45rem .9rem", borderTop:"1px solid rgba(6,199,85,.08)", display:"flex", alignItems:"center", gap:".4rem", flexWrap:"wrap", background:"#f5fbf7" }}>
-          {/* 客戶通知按鈕（需要 lineId）*/}
-          <span style={{ fontSize:".70rem", color:"rgba(6,199,85,.6)" }}>💬 LINE通知</span>
-          {["confirm","reminder","cancel"].map(type=>{
-            const labels = { confirm:"✓ 確認通知", reminder:"⏰ 提醒通知", cancel:"✕ 取消通知" };
-            const colors = { confirm:"rgba(160,196,184,.5)", reminder:"rgba(196,188,154,.5)", cancel:"rgba(196,160,160,.5)" };
-            return (
-              <button key={type}
-                disabled={lineStatus==="sending"}
-                onClick={()=>handleLineNotify(type)}
-                style={{ ...actionBtn, borderColor:colors[type], color:lineStatus==="sending"?"#4a4a4a":type==="confirm"?"#a0c4b8":type==="reminder"?"#c4bc9a":"#c4a0a0" }}>
-                {labels[type]}
-              </button>
-            );
-          })}
-
-          {/* 店主通知狀態 + 補發（線上預約才顯示）*/}
-          {booking.source === "online" && (
+          {(
             <>
-              <span style={{ color:"rgba(0,0,0,.15)", margin:"0 .1rem", fontSize:".8rem" }}>｜</span>
               {booking.notifyAdmin === true && (
                 <span style={{ fontSize:".70rem", color:"#06C755", display:"flex", alignItems:"center", gap:".2rem" }}>
                   🔔 店主已通知
