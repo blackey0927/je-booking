@@ -2327,9 +2327,8 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
           <div style={{ background:"var(--card)", border:"1px solid var(--line)", borderRadius:"var(--r)", overflow:"hidden", marginBottom:"1rem" }}>
             <div style={{ padding:"1rem 1.1rem", display:"flex", gap:".85rem", alignItems:"center" }}>
               <div style={{ flex:1 }}>
-                <div style={{ fontSize:".9rem", fontWeight:600, color:"var(--ink)", marginBottom:".3rem" }}>加入 LINE 官方帳號</div>
-                <div style={{ fontSize:".82rem", color:"var(--ink3)", lineHeight:1.65, marginBottom:".65rem" }}>
-                  加入後可接收預約確認與提醒訊息，搜尋 <b style={{ color:"var(--ink2)" }}>{SALON.lineOaId}</b>
+                <div style={{ fontSize:".9rem", fontWeight:600, color:"var(--ink)", marginBottom:".65rem" }}>
+                  加入 LINE 官方帳號，線上預約系統帶著走
                 </div>
                 <a href={`https://line.me/R/ti/p/${SALON.lineOaId}`} target="_blank" rel="noreferrer"
                   style={{ display:"inline-flex", alignItems:"center", gap:".4rem", padding:".42rem .9rem", background:"#06C755", color:"#fff", borderRadius:20, fontSize:".82rem", fontWeight:600, textDecoration:"none" }}>
