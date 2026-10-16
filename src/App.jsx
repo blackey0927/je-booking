@@ -3675,6 +3675,7 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, onEditBooking, isMob
   const [filterStylist, setFilterStylist] = useState("all");
 
   const [showManual, setShowManual] = useState(false);
+  const [search, setSearch] = useState("");   // 客戶查詢：姓名或電話
 
   useEffect(() => {
     if (!jumpTo) return;
@@ -3690,6 +3691,30 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, onEditBooking, isMob
     const dateStr = `${calDate.y}-${String(calDate.m+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
     return filtered.filter(b => b.date===dateStr && b.status!=="cancelled");
   };
+
+  /* ── 客戶預約查詢：輸入姓名或電話，列出該客人所有預約時刻 ── */
+  const searchQ = search.trim();
+  const searchResults = useMemo(() => {
+    if (!searchQ) return [];
+    const q      = searchQ.toLowerCase();
+    const qDigit = searchQ.replace(/[^0-9]/g, "");
+    const hit = bookings.filter(b => {
+      const nm = (b.customerName || "").toLowerCase();
+      const ph = (b.customerPhone || "").replace(/[^0-9]/g, "");
+      if (nm.includes(q)) return true;
+      return !!(qDigit && ph && ph.includes(qDigit));
+    });
+    const todayStr = formatDate(new Date());
+    // 即將到來的由近到遠排前面，已過去的由新到舊排後面
+    const up   = hit.filter(b => b.date >= todayStr).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+    const past = hit.filter(b => b.date <  todayStr).sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
+    return [...up, ...past];
+  }, [searchQ, bookings]);
+
+  const upcomingCount = useMemo(() => {
+    const todayStr = formatDate(new Date());
+    return searchResults.filter(b => b.date >= todayStr && b.status !== "cancelled").length;
+  }, [searchResults]);
 
   const selectedBookings = selectedDay
     ? filtered.filter(b => {
@@ -3804,6 +3829,79 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, onEditBooking, isMob
             );
           })}
         </div>
+      </div>
+
+      {/* 客戶預約查詢 */}
+      <div style={{ marginBottom:"1rem" }}>
+        <div style={{ position:"relative" }}>
+          <span style={{ position:"absolute", left:".75rem", top:"50%", transform:"translateY(-50%)", fontSize:".9rem", opacity:.5 }}>🔍</span>
+          <input value={search} onChange={e=>setSearch(e.target.value)}
+            placeholder="查詢客戶預約時刻 — 輸入姓名或電話"
+            style={{ width:"100%", padding:".6rem .9rem .6rem 2.3rem", borderRadius:"var(--r-sm)",
+              border:`1px solid ${searchQ ? "var(--copper-bd)" : "var(--line)"}`,
+              background: searchQ ? "rgba(196,131,90,.04)" : "var(--card)",
+              fontSize:".88rem", color:"var(--ink)", outline:"none" }}/>
+          {searchQ && (
+            <button onClick={()=>setSearch("")}
+              style={{ position:"absolute", right:".6rem", top:"50%", transform:"translateY(-50%)",
+                background:"none", border:"none", color:"var(--ink4)", fontSize:"1rem", cursor:"pointer" }}>✕</button>
+          )}
+        </div>
+
+        {searchQ && (
+          <div style={{ marginTop:".75rem" }}>
+            <div style={{ fontSize:".82rem", color:"var(--copper)", fontWeight:500, letterSpacing:".06em", marginBottom:".6rem" }}>
+              「{searchQ}」· 共 {searchResults.length} 筆
+              {upcomingCount > 0 && <span style={{ color:"var(--ink3)", fontWeight:400 }}>（即將到來 {upcomingCount} 筆）</span>}
+            </div>
+            {searchResults.length === 0
+              ? <div style={{ padding:"1.2rem", textAlign:"center", fontSize:".88rem", color:"#999999",
+                  background:"rgba(0,0,0,.03)", borderRadius:8, border:"1px dashed var(--line)" }}>
+                  找不到符合的預約
+                </div>
+              : (() => {
+                  const todayStr = formatDate(new Date());
+                  return searchResults.map(b => {
+                    const st   = (stylists||[]).find(x => x.id === b.stylistId);
+                    const svcs = getBookingSvcs(b, SERVICES);
+                    const isPast = b.date < todayStr;
+                    const cancelled = b.status === "cancelled";
+                    return (
+                      <button key={b.id}
+                        onClick={()=>{
+                          const [y,m,d] = b.date.split("-").map(Number);
+                          setCalDate({ y, m:m-1 }); setSelectedDay(d); setSearch("");
+                        }}
+                        style={{ width:"100%", textAlign:"left", marginBottom:".45rem", padding:".6rem .8rem",
+                          borderRadius:8, cursor:"pointer", display:"flex", alignItems:"center", gap:".7rem", flexWrap:"wrap",
+                          background: cancelled ? "rgba(0,0,0,.025)" : isPast ? "var(--card)" : "rgba(196,131,90,.06)",
+                          border:`1px solid ${cancelled ? "var(--line)" : isPast ? "var(--line)" : "var(--copper-bd)"}`,
+                          opacity: cancelled ? .55 : 1 }}>
+                        <span style={{ fontSize:".88rem", fontWeight:700, color: cancelled ? "var(--ink4)" : "var(--ink)",
+                          textDecoration: cancelled ? "line-through" : "none", whiteSpace:"nowrap" }}>
+                          {displayDate(b.date)} {b.time}
+                        </span>
+                        <span style={{ fontSize:".82rem", color:"var(--ink2)" }}>{b.customerName || "—"}</span>
+                        <span style={{ fontSize:".78rem", color: st?.color || "#c4900a" }}>
+                          {st ? `${st.icon} ${st.name}` : "🕘 待指派"}
+                        </span>
+                        <span style={{ fontSize:".76rem", color:"var(--ink3)" }}>
+                          {svcs.map(x=>x.zh).join("・") || b.serviceId}
+                        </span>
+                        {cancelled && (
+                          <span style={{ fontSize:".7rem", padding:".1rem .45rem", borderRadius:20,
+                            background:"rgba(196,160,160,.14)", color:"#b06060" }}>已取消</span>
+                        )}
+                        {!cancelled && !isPast && (
+                          <span style={{ marginLeft:"auto", fontSize:".72rem", color:"var(--copper)" }}>查看 →</span>
+                        )}
+                      </button>
+                    );
+                  });
+                })()
+            }
+          </div>
+        )}
       </div>
 
       {/* Selected day detail */}
