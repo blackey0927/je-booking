@@ -104,6 +104,53 @@ function getBookingSvcs(booking, svcs) {
  * 後台手動設定的 durationMin 優先——燙髮等需先溝通的服務，
  * 設計師來電確認後依實際需求填寫，不必硬佔服務預設的整段時間。
  */
+/** 顧客加購精緻洗髮時的收費與時間說明 */
+function ShampooNotice({ info, onConfirm, onClose, isMobile }) {
+  if (!info) return null;
+  const tier = SHAMPOO_TIERS[info.tier] || SHAMPOO_TIERS.short;
+  return (
+    <div onClick={e=>{ if (e.target === e.currentTarget) onClose(); }}
+      style={{ position:"fixed", inset:0, zIndex:1000, background:"rgba(28,24,22,.55)",
+        display:"flex", alignItems:"center", justifyContent:"center", padding:"1.25rem" }}>
+      <div role="dialog" aria-modal="true"
+        style={{ width:"100%", maxWidth:400, background:"var(--card)", borderRadius:16,
+          boxShadow:"0 20px 60px rgba(28,24,22,.3)", overflow:"hidden" }}>
+        <div style={{ padding: isMobile ? "1.4rem 1.2rem 1rem" : "1.6rem 1.5rem 1.1rem", textAlign:"center" }}>
+          <div style={{ fontSize:"2rem", lineHeight:1, marginBottom:".5rem" }}>🚿</div>
+          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.25rem", fontWeight:600, color:"var(--ink)" }}>
+            精緻洗髮．收費說明
+          </div>
+
+          <div style={{ marginTop:".9rem", textAlign:"left", fontSize:".86rem", color:"var(--ink2)", lineHeight:1.9 }}>
+            <div>・收費依<b>店內公告長度</b>計算</div>
+            <div>・服務包含<b>吹乾</b>，不含吹整造型</div>
+            <div>・如需造型另外計費（<b>$100 起</b>）</div>
+          </div>
+
+          <div style={{ marginTop:".9rem", padding:".65rem .8rem", borderRadius:10,
+            background:"var(--copper-bg)", border:"1px solid var(--copper-bd)" }}>
+            <div style={{ fontSize:".74rem", color:"var(--ink3)", letterSpacing:".04em" }}>依您選擇的剪髮項目</div>
+            <div style={{ fontSize:".95rem", fontWeight:600, color:"var(--copper)", marginTop:".2rem" }}>
+              {tier.label}　約 {tier.minutes} 分鐘
+            </div>
+            <div style={{ fontSize:".7rem", color:"var(--ink3)", marginTop:".25rem", lineHeight:1.6 }}>
+              已含吹乾時間；實際長度以現場為準
+            </div>
+          </div>
+        </div>
+        <div style={{ padding:"0 1.2rem 1.2rem", display:"flex", gap:".5rem" }}>
+          <button onClick={onClose} className="btn-ghost"
+            style={{ flex:1, padding:".7rem", borderRadius:12, fontSize:".88rem" }}>取消</button>
+          <button onClick={onConfirm} className="btn-copper"
+            style={{ flex:2, padding:".7rem", borderRadius:12, fontSize:".92rem", fontWeight:600 }}>
+            我知道了，加購
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** 顧客點選「需來電洽詢」服務時跳出的提示 */
 function PhoneOnlyNotice({ svc, onClose, isMobile }) {
   if (!svc) return null;
@@ -156,10 +203,55 @@ function PhoneOnlyNotice({ svc, onClose, isMobile }) {
   );
 }
 
+/* ═══════════════════════════════════════════════════════════
+   精緻洗髮．髮長級距
+   收費依店內公告長度計算；作業時間（含吹乾）則依髮長不同。
+   線上預約依「剪髮項目」自動判定：男子剪髮→短髮、女子剪髮→長髮（內衣以上）；
+   腰部以下因線上無從判斷，由店家在後台調整。
+═══════════════════════════════════════════════════════════ */
+const SHAMPOO_SVC_ID = "shampoo";
+
+const SHAMPOO_TIERS = {
+  short: { key:"short", label:"男子短髮",         minutes:15 },
+  mid:   { key:"mid",   label:"女子長髮・內衣以上", minutes:30 },
+  long:  { key:"long",  label:"女子長髮・腰部以下", minutes:40 },
+};
+
+/** 依所選服務自動判定髮長級距（有女子剪髮 → 長髮） */
+function autoShampooTier(serviceIds) {
+  const ids = serviceIds || [];
+  return ids.includes("cut_female") ? "mid" : "short";
+}
+
+/** 取得該筆預約的精緻洗髮級距（未指定時依服務自動判定） */
+function getShampooTier(serviceIds, explicitTier) {
+  if (explicitTier && SHAMPOO_TIERS[explicitTier]) return explicitTier;
+  return autoShampooTier(serviceIds);
+}
+
+/** 精緻洗髮因髮長增加的分鐘數（相對於服務預設時長） */
+function shampooExtraMinutes(serviceIds, explicitTier, svcs) {
+  const ids = serviceIds || [];
+  if (!ids.includes(SHAMPOO_SVC_ID)) return 0;
+  const list = svcs || SERVICES;
+  const base = Number((list.find(x => x.id === SHAMPOO_SVC_ID) || {}).duration) || 0;
+  const tier = SHAMPOO_TIERS[getShampooTier(ids, explicitTier)];
+  return Math.max(0, (tier?.minutes || base) - base);
+}
+
+/** 精緻洗髮的完整顯示名稱，例如「精緻洗髮（女子長髮・內衣以上）」 */
+function shampooTierLabel(serviceIds, explicitTier) {
+  const ids = serviceIds || [];
+  if (!ids.includes(SHAMPOO_SVC_ID)) return "";
+  return SHAMPOO_TIERS[getShampooTier(ids, explicitTier)]?.label || "";
+}
+
 function getBookingDuration(b, svcs) {
   const custom = Number(b?.durationMin);
   if (custom > 0) return custom;
-  const sum = getBookingSvcs(b, svcs).reduce((n, x) => n + (Number(x.duration) || 0), 0);
+  const ids = (b?.serviceIds && b.serviceIds.length) ? b.serviceIds : [b?.serviceId].filter(Boolean);
+  const sum = getBookingSvcs(b, svcs).reduce((n, x) => n + (Number(x.duration) || 0), 0)
+            + shampooExtraMinutes(ids, b?.shampooTier, svcs);
   return sum || 60;
 }
 
@@ -1809,6 +1901,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
   const [showHairAnalysis, setShowHairAnalysis] = useState(false);
   const [sel, setSel]   = useState({ services:[], stylist:null, date:null, time:null });
   const [phoneOnlySvc, setPhoneOnlySvc] = useState(null);   // 顯示「請來電洽詢」的服務
+  const [shampooInfo, setShampooInfo]   = useState(null);   // 精緻洗髮收費說明（{ tier, onConfirm }）
   const [form, setForm] = useState({ name:"", phone:"", lineId:"", notes:"" });
   const [done, setDone] = useState(null);
   const [calDate, setCalDate] = useState(() => { const d=new Date(); return {y:d.getFullYear(),m:d.getMonth()}; });
@@ -1833,7 +1926,8 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
 
   const updateMember = (idx, patch) => setMembers(prev => prev.map((m,i) => i===idx ? {...m,...patch} : m));
   const memberSvcs     = (m) => (m.services||[]).map(id=>SERVICES_LOCAL_OUTER.find(s=>s.id===id)).filter(Boolean);
-  const memberDuration = (m) => memberSvcs(m).reduce((sum,s)=>sum+(s.duration||0),0);
+  const memberDuration = (m) => memberSvcs(m).reduce((sum,s)=>sum+(s.duration||0),0)
+    + shampooExtraMinutes(m.services, null, SERVICES_LOCAL_OUTER);
   const memberStylist  = (m) => STYLISTS_LOCAL_OUTER.find(s=>s.id===m.stylist);
   const memberSlots    = (m, selfIdx = -1) => {
     if (!m.stylist || !m.date || !m.services?.length) return [];
@@ -1883,7 +1977,8 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
   const STYLISTS_LOCAL  = stylists;
   const selSvcs        = SERVICES_LOCAL.filter(s => sel.services.includes(s.id));
   const svcObj         = selSvcs[0] || null; // primary (for backward compat)
-  const totalDuration  = selSvcs.reduce((sum, s) => sum + (s.duration || 0), 0);
+  const totalDuration  = selSvcs.reduce((sum, s) => sum + (s.duration || 0), 0)
+    + shampooExtraMinutes(sel.services, null, SERVICES_LOCAL);
   const stylistObj     = STYLISTS_LOCAL.find(s=>s.id===sel.stylist);
 
   const availableSlots = useMemo(() => {
@@ -1991,6 +2086,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
         groupSize: members.length,
         serviceId:  m.services[0] || "",
         serviceIds: m.services,
+        ...(m.services?.includes(SHAMPOO_SVC_ID) ? { shampooTier: autoShampooTier(m.services) } : {}),
         stylistId: m.stylist,
         date: typeof m.date === "string" ? m.date : formatDate(m.date), time: m.time,
         ...(defaultGapFor(m.services, slotToMinutes(m.time), memberDuration(m), SERVICES_LOCAL_OUTER) || {}),
@@ -2017,6 +2113,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
       const booking = {
         serviceId:  sel.services[0] || "",
         serviceIds: sel.services,
+        ...(sel.services.includes(SHAMPOO_SVC_ID) ? { shampooTier: autoShampooTier(sel.services) } : {}),
         stylistId:  assignedStylistId,
         needsAssignment,
         date: formatDate(sel.date), time: sel.time,
@@ -2048,6 +2145,10 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
 
       {/* ── Hair Analysis Modal ── */}
       <PhoneOnlyNotice svc={phoneOnlySvc} onClose={()=>setPhoneOnlySvc(null)} isMobile={isMobile}/>
+
+      <ShampooNotice info={shampooInfo} isMobile={isMobile}
+        onClose={()=>setShampooInfo(null)}
+        onConfirm={()=>{ shampooInfo?.onConfirm?.(); setShampooInfo(null); }}/>
 
       {showHairAnalysis && (
         <HairAnalysisModal
@@ -2314,17 +2415,24 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
                   }
                   const ADDON_ONLY = ["shampoo"];
                   const isAddon = ADDON_ONLY.includes(svc.id);
-                  setSel(p=>{
-                    if (p.services.includes(svc.id)) {
-                      return {...p, services:p.services.filter(id=>id!==svc.id), stylist:null, date:null, time:null};
-                    }
-                    const otherSelected = p.services.some(id => !ADDON_ONLY.includes(id));
-                    if (isAddon && !otherSelected) {
-                      alert("「" + svc.zh + "」需搭配剪髮、燙髮或染髮等主要服務一起預約");
-                      return p;
-                    }
-                    return {...p, services:[...p.services, svc.id], stylist:null, date:null, time:null};
-                  });
+                  const add = () => setSel(p=>({ ...p, services:[...p.services, svc.id], stylist:null, date:null, time:null }));
+
+                  // 取消勾選
+                  if (sel.services.includes(svc.id)) {
+                    setSel(p=>({ ...p, services:p.services.filter(id=>id!==svc.id), stylist:null, date:null, time:null }));
+                    return;
+                  }
+                  // 加購類服務需先選主要服務
+                  if (isAddon && !sel.services.some(id => !ADDON_ONLY.includes(id))) {
+                    alert("「" + svc.zh + "」需搭配剪髮、燙髮或染髮等主要服務一起預約");
+                    return;
+                  }
+                  // 精緻洗髮：先說明收費與作業時間（髮長依剪髮項目自動判定）
+                  if (svc.id === SHAMPOO_SVC_ID) {
+                    setShampooInfo({ tier: autoShampooTier(sel.services), onConfirm: add });
+                    return;
+                  }
+                  add();
                 }}
                   className={`svc-card fade-up fade-up-${Math.min(si+1,6)}${active?" active":""}`}
                   style={{ display:"flex", flexDirection:"column", gap:0, padding:0, textAlign:"left", WebkitTapHighlightColor:"transparent", overflow:"hidden" }}>
@@ -2476,7 +2584,16 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
                             return (
                               <button key={svc.id} onClick={()=>{
                                   if (!active && isPhoneOnlyService(svc)) { setPhoneOnlySvc(svc); return; }
-                                  updateMember(idx,{ services: active ? m.services.filter(id=>id!==svc.id) : [...(m.services||[]),svc.id], stylist:null, date:null, time:null });
+                                  const addSvc = () => updateMember(idx,{ services:[...(m.services||[]),svc.id], stylist:null, date:null, time:null });
+                                  if (active) {
+                                    updateMember(idx,{ services: m.services.filter(id=>id!==svc.id), stylist:null, date:null, time:null });
+                                    return;
+                                  }
+                                  if (svc.id === SHAMPOO_SVC_ID) {
+                                    setShampooInfo({ tier: autoShampooTier(m.services || []), onConfirm: addSvc });
+                                    return;
+                                  }
+                                  addSvc();
                                 }}
                                 style={{ display:"flex", alignItems:"center", gap:".5rem", padding:".6rem .75rem", borderRadius:10, border:`1.5px solid ${active?"var(--copper)":"var(--line)"}`, background:active?"var(--copper-bg)":"var(--card)", color:active?"var(--copper)":"var(--ink2)", textAlign:"left", cursor:"pointer", transition:"all .16s", WebkitTapHighlightColor:"transparent" }}>
                                 <span style={{ fontSize:"1.1rem" }}>{svc.icon}</span>
@@ -3086,6 +3203,7 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
     date: today, time:"10:00",
     customerName:"", customerPhone:"", notes:"", lineId:"",
     source: "phone",
+    shampooTier: "",   // 空白 = 依剪髮項目自動判定
     durationMin: "",   // 空白 = 依服務預設時長
     freeFrom: "", freeTo: "",   // 中途空檔（燙染等待時間，可接其他客人）
   });
@@ -3093,7 +3211,10 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
 
   const selSvcsM    = SERVICES.filter(s => form.serviceIds.includes(s.id));
   const svcObj      = selSvcsM[0] || null;
-  const svcDurM     = selSvcsM.reduce((sum,s)=>sum+(s.duration||0),0);
+  const hasShampoo  = form.serviceIds.includes(SHAMPOO_SVC_ID);
+  const shampooTier = getShampooTier(form.serviceIds, form.shampooTier);
+  const svcDurM     = selSvcsM.reduce((sum,s)=>sum+(s.duration||0),0)
+                    + shampooExtraMinutes(form.serviceIds, form.shampooTier);
   // 設計師手動填寫的作業時長優先（燙髮等來電溝通後才確定的服務）
   const customDurM  = Number(form.durationMin) > 0 ? Number(form.durationMin) : 0;
   const totalDurM   = customDurM || svcDurM;
@@ -3233,6 +3354,7 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
     onBook({
       serviceId:  form.serviceIds[0] || "", // primary
       serviceIds: form.serviceIds,
+      ...(hasShampoo ? { shampooTier } : {}),
       stylistId: form.stylistId || "any",
       needsAssignment: !form.stylistId,
       date: form.date, time: form.time,
@@ -3279,6 +3401,34 @@ function ManualBookingModal({ onBook, onClose, bookings, stylistSettings, isMobi
             {selSvcsM.length > 0 && (
               <div style={{ marginTop:".4rem", fontSize:".78rem", color:"var(--ink3)" }}>
                 服務預設合計 {svcDurM} 分鐘
+              </div>
+            )}
+
+            {/* 精緻洗髮．髮長級距 */}
+            {hasShampoo && (
+              <div style={{ marginTop:".6rem", padding:".6rem .7rem", borderRadius:8,
+                background:"rgba(122,154,170,.07)", border:"1px solid rgba(122,154,170,.3)" }}>
+                <div style={{ fontSize:".76rem", fontWeight:600, color:"var(--ink2)", marginBottom:".1rem" }}>
+                  🚿 精緻洗髮．髮長
+                </div>
+                <div style={{ fontSize:".68rem", color:"var(--ink3)", marginBottom:".45rem", lineHeight:1.5 }}>
+                  線上預約依剪髮項目自動判定，腰部以下請在此調整
+                </div>
+                <div style={{ display:"flex", gap:".35rem", flexWrap:"wrap" }}>
+                  {Object.values(SHAMPOO_TIERS).map(t => {
+                    const on = shampooTier === t.key;
+                    return (
+                      <button key={t.key}
+                        onClick={()=>setForm(p=>({ ...p, shampooTier:t.key, time:"" }))}
+                        style={{ padding:".3rem .6rem", borderRadius:"var(--r-sm)", fontSize:".78rem", cursor:"pointer",
+                          border:`1px solid ${on?"var(--copper)":"var(--line)"}`,
+                          background:on?"var(--copper-bg)":"var(--card)",
+                          color:on?"var(--copper)":"var(--ink2)" }}>
+                        {on && "✓ "}{t.label}　{t.minutes}分
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
@@ -4840,6 +4990,7 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
       stylistId:     booking.stylistId     || "",
       serviceIds:    booking.serviceIds    || [booking.serviceId].filter(Boolean),
       durationMin:   Number(booking.durationMin) > 0 ? String(booking.durationMin) : "",
+      shampooTier:   booking.shampooTier || "",
       freeFrom:      booking.freeFrom || "",
       freeTo:        booking.freeTo   || "",
     });
@@ -4862,6 +5013,8 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
       needsAssignment: editForm.stylistId === "any" ? true : false,
       // 空白 → null：Firebase update 會移除欄位，回到依服務預設時長
       durationMin:   Number(editForm.durationMin) > 0 ? Number(editForm.durationMin) : null,
+      shampooTier:   editForm.serviceIds.includes(SHAMPOO_SVC_ID)
+                       ? getShampooTier(editForm.serviceIds, editForm.shampooTier) : null,
       // 中途空檔：起迄齊全且順序正確才生效，否則清除
       freeFrom: (editForm.freeFrom && editForm.freeTo
                  && slotToMinutes(editForm.freeTo) > slotToMinutes(editForm.freeFrom)) ? editForm.freeFrom : null,
@@ -4993,6 +5146,27 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
               {STYLISTS.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
+          {/* 精緻洗髮．髮長 */}
+          {editForm.serviceIds.includes(SHAMPOO_SVC_ID) && (
+            <div style={{ gridColumn: isMobile?"1":"1 / -1" }}>
+              <label style={lStyle}>🚿 精緻洗髮．髮長（影響作業時間）</label>
+              <div style={{ display:"flex", gap:".3rem", flexWrap:"wrap" }}>
+                {Object.values(SHAMPOO_TIERS).map(t => {
+                  const on = getShampooTier(editForm.serviceIds, editForm.shampooTier) === t.key;
+                  return (
+                    <button key={t.key} onClick={()=>setEditForm(p=>({ ...p, shampooTier:t.key }))}
+                      style={{ padding:".28rem .55rem", borderRadius:6, fontSize:".76rem", cursor:"pointer",
+                        border:`1px solid ${on?"var(--copper)":"var(--line)"}`,
+                        background:on?"var(--copper-bg)":"transparent",
+                        color:on?"var(--copper)":"var(--ink3)" }}>
+                      {on && "✓ "}{t.label} {t.minutes}分
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* 中途空檔 */}
           <div style={{ gridColumn: isMobile?"1":"1 / -1" }}>
             <label style={lStyle}>中途空檔（燙染等待時間，此段可接其他客人）</label>
@@ -5069,7 +5243,11 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
           <span style={{ fontSize:"1.32rem" }}>{svc?.icon}</span>
         </div>
         <div style={{ flex:1 }}>
-          <div style={{ fontSize:".94rem", color:"var(--ink)", fontWeight:600 }}>{svcs.map(s=>s.zh).join("・") || booking.serviceId}</div>
+          <div style={{ fontSize:".94rem", color:"var(--ink)", fontWeight:600 }}>
+            {svcs.map(x => x.id === SHAMPOO_SVC_ID
+              ? `${x.zh}（${shampooTierLabel(booking.serviceIds || [booking.serviceId], booking.shampooTier)}）`
+              : x.zh).join("・") || booking.serviceId}
+          </div>
           <div style={{ fontSize:".86rem", color: st?.color || "#c4900a" }}>
             {st ? `${st.icon} ${st.name}` : "🕘 待指派設計師"} · {booking.time}
             <span style={{ color:"var(--ink3)" }}>
@@ -6076,7 +6254,9 @@ export default function SalonApp() {
   const handleBook = async (booking) => {
     try {
       const svcs       = getBookingSvcs(booking, servicesMgr.services || DEFAULT_SERVICES);
-      const svcName    = svcs.map(s=>s.zh).join("・") || booking.serviceId || "";
+      const tierLabel  = shampooTierLabel(booking.serviceIds || [booking.serviceId], booking.shampooTier);
+      const svcName    = (svcs.map(s => s.id === SHAMPOO_SVC_ID && tierLabel ? `${s.zh}（${tierLabel}）` : s.zh)
+                            .join("・")) || booking.serviceId || "";
       const stylist    = (stylistsMgr.stylists || DEFAULT_STYLISTS).find(s => s.id === booking.stylistId);
       const stylistName = stylist?.name
         || (booking.stylistId === "any" || booking.needsAssignment ? "不指定（待店家安排）" : "");
