@@ -392,6 +392,7 @@ function countFreeStylists(slot, date, bookings, stylists, scheduleOverrides, du
   const slotMins = slotToMinutes(slot);
   return (stylists || []).filter(st => {
     if (!isStylistBookableOnline(st, date, scheduleOverrides)) return false;
+    if (isOnlinePaused(st.id, date, slotMins, slotMins + duration, scheduleOverrides)) return false;
     const dh = getStylistDayHours(st.id, date, scheduleOverrides);
     if (slotMins < dh.open || slotMins + duration > dh.close) return false;
     return isSlotAvailable(slot, st.id, date, bookings, duration);
@@ -473,9 +474,10 @@ function canAcceptBooking({ slot, date, duration, serviceIds, stylistId, booking
   const online  = list.filter(st => isStylistBookableOnline(st, date, overrides));
 
   // 新預約的候選設計師
+  const onlineOk = (st) => !isOnlinePaused(st.id, date, start, end, overrides);
   const newCands = (stylistId && stylistId !== "any")
-    ? online.filter(st => st.id === stylistId && fits(st, start, end))
-    : online.filter(st => fits(st, start, end) && stylistCanDo(st, serviceIds, list));
+    ? online.filter(st => st.id === stylistId && onlineOk(st) && fits(st, start, end))
+    : online.filter(st => onlineOk(st) && fits(st, start, end) && stylistCanDo(st, serviceIds, list));
   if (newCands.length === 0) return false;
 
   const items = [{ s:start, e:end, cands:newCands }];
@@ -568,11 +570,56 @@ function isStylistAvailable(stylist, date, scheduleOverrides) {
 
 // ── 線上預約開關 ──
 // 設計師當天「有上班」，但已決定不再承接線上預約（現場/電話仍可）
-function isOnlineClosed(stylistId, date, scheduleOverrides) {
-  if (!stylistId || stylistId === "any") return false;
+//
+// closedOnline 的每一筆可以是：
+//   "2026-10-24"              → 整天暫停
+//   "2026-10-24 13:00-17:00"  → 只暫停這個時段（其餘時間照常開放線上預約）
+// 舊資料（純日期字串）自動視為整天，不需轉檔。
+function parseClosedEntry(entry) {
+  if (typeof entry !== "string") return null;
+  const m = entry.trim().match(/^(\d{4}-\d{2}-\d{2})(?:[ |](\d{1,2}:\d{2})\s*[-~～]\s*(\d{1,2}:\d{2}))?$/);
+  if (!m) return null;
+  const from = m[2] ? slotToMinutes(m[2]) : null;
+  const to   = m[3] ? slotToMinutes(m[3]) : null;
+  const partial = from !== null && to !== null && to > from;
+  return { date: m[1], from: partial ? from : null, to: partial ? to : null, partial };
+}
+
+/** 組出儲存用字串；from/to 任一為空即為整天 */
+function makeClosedEntry(dateStr, from, to) {
+  if (from === null || from === undefined || to === null || to === undefined || to <= from) return dateStr;
+  return `${dateStr} ${minsToTime(from)}-${minsToTime(to)}`;
+}
+
+/** 該設計師當天所有暫停區間（整天 → 0~1440） */
+function getOnlinePauses(stylistId, date, scheduleOverrides) {
+  if (!stylistId || stylistId === "any") return [];
   const dateStr = typeof date === "string" ? date : formatDate(date);
   const list = scheduleOverrides?.[stylistId]?.closedOnline;
-  return Array.isArray(list) && list.includes(dateStr);
+  if (!Array.isArray(list)) return [];
+  return list
+    .map(parseClosedEntry)
+    .filter(p => p && p.date === dateStr)
+    .map(p => p.partial ? { from:p.from, to:p.to, partial:true } : { from:0, to:1440, partial:false });
+}
+
+/** 整天暫停（日層級判斷用：部分時段暫停的日子仍算可線上預約） */
+function isOnlineClosed(stylistId, date, scheduleOverrides) {
+  return getOnlinePauses(stylistId, date, scheduleOverrides).some(p => !p.partial);
+}
+
+/** 指定時段是否落在暫停區間內（時段層級判斷用） */
+function isOnlinePaused(stylistId, date, startMins, endMins, scheduleOverrides) {
+  return getOnlinePauses(stylistId, date, scheduleOverrides)
+    .some(p => startMins < p.to && endMins > p.from);
+}
+
+/** 該日暫停摘要：null=未暫停 / {full:true} / {full:false, text:"13:00–17:00"} */
+function closedSummary(closedList, dateStr) {
+  const ps = (closedList || []).map(parseClosedEntry).filter(p => p && p.date === dateStr);
+  if (!ps.length) return null;
+  if (ps.some(p => !p.partial)) return { full:true, text:"整天" };
+  return { full:false, text: ps.map(p => `${minsToTime(p.from)}–${minsToTime(p.to)}`).join("、") };
 }
 
 // 顧客端專用：該設計師當天是否可「線上」預約
@@ -609,6 +656,7 @@ function autoAssignStylist(dateStr, time, serviceIds, bookings, stylists, schedu
     if (!isStylistAvailable(st, date, scheduleOverrides)) return false;
     // 線上預約：跳過已手動關閉線上收單的設計師
     if (onlineOnly && isOnlineClosed(st.id, date, scheduleOverrides)) return false;
+    if (onlineOnly && isOnlinePaused(st.id, date, slotToMinutes(time), slotToMinutes(time) + duration, scheduleOverrides)) return false;
     if (svcNames.length > 0 && !svcNames.every(n => st.specialty.includes(n))) return false;
     return isSlotAvailable(time, st.id, date, bookings, duration);
   });
@@ -691,6 +739,12 @@ function getDayClosurePeriods(dateStr, closedPeriods = []) {
  * 後台手動預約沿用 ALL_SLOTS（15 分鐘），不受此設定影響。
  */
 const BOOKING_SLOT_MINUTES = 30;
+// 暫停線上預約時段可選的時間點（每半小時，涵蓋全店最早～最晚）
+const PAUSE_TIME_OPTIONS = (() => {
+  const out = [];
+  for (let m = SALON.hours.open*60; m <= SALON.hours.close*60; m += 30) out.push(minsToTime(m));
+  return out;
+})();
 const BOOK_SLOTS = generateSlots(SALON.hours.open, SALON.hours.close, BOOKING_SLOT_MINUTES);
 
 /* ═══════════════════════════════════════════════════════════
@@ -1109,10 +1163,14 @@ function useStylistSettings() {
     });
   };
 
+  // 切換：該日已有任何暫停設定（整天或部分時段）→ 全部清掉；否則整天暫停
   const toggleClosedOnline = (id, dateStr) => {
     setSettings(prev => {
-      const cur = prev[id]?.closedOnline || [];
-      const list = cur.includes(dateStr) ? cur.filter(d => d !== dateStr) : [...cur, dateStr].sort();
+      const cur  = prev[id]?.closedOnline || [];
+      const same = cur.filter(e => parseClosedEntry(e)?.date === dateStr);
+      const list = same.length
+        ? cur.filter(e => parseClosedEntry(e)?.date !== dateStr)
+        : [...cur, dateStr].sort();
       const next = { ...prev, [id]: { ...(prev[id]||{}), closedOnline: list } };
       saveSchedule(next);
       return next;
@@ -1955,6 +2013,8 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
       const sm = slotToMinutes(slot);
       if (sm < dh.open) return false;
       if (sm + dur > dh.close) return false;
+      // 設計師該時段暫停線上收單
+      if (isOnlinePaused(m.stylist, dateObj, sm, sm + dur, stylistSettings)) return false;
       if (isToday && sm < nowMins+15) return false;
       // 店家公休時段
       if (isSlotClosedByPeriod(mDateStr, slot, dur, salonSettings.closedPeriods)) return false;
@@ -2008,6 +2068,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
         // 每位設計師各自以本人時段判斷
         const mySegs = newBookingSegments(slotMins, totalDuration, sel.services, SERVICES_LOCAL);
         const canServe = available.some(st => {
+          if (isOnlinePaused(st.id, date, slotMins, slotMins + totalDuration, stylistSettings)) return false;
           const stDh = getStylistDayHours(st.id, date, stylistSettings);
           if (slotMins < stDh.open || slotMins + totalDuration > stDh.close) return false;
           return isSlotAvailable(slot, st.id, date, bookings, totalDuration, mySegs);
@@ -2026,6 +2087,8 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
       const slotMins = slotToMinutes(slot);
       if (slotMins < sDh.open) return false;
       if (slotMins + totalDuration > sDh.close) return false;
+      // 設計師該時段暫停線上收單
+      if (isOnlinePaused(sel.stylist, sel.date, slotMins, slotMins + totalDuration, stylistSettings)) return false;
       if (minStartMins > 0 && slotMins < minStartMins) return false;
       if (isToday && slotMins < nowMins + 15) return false;
       if (isSlotClosedByPeriod(formatDate(sel.date), slot, totalDuration, salonSettings.closedPeriods)) return false;
@@ -4038,9 +4101,15 @@ function ScheduleView({ bookings, isMobile, stylistSettings, onAddBooking, styli
                     return (
                       <>
                         {hasCustom && <div style={{ fontSize:".58rem", color:"rgba(200,255,200,.85)", letterSpacing:".04em" }}>{minsToTime(stDh.open)}–{minsToTime(stDh.close)}</div>}
-                        {isOnlineClosed(st.id, viewDate, stylistSettings) && (
-                          <div style={{ fontSize:".55rem", color:"rgba(255,190,120,.95)", letterSpacing:".04em" }}>停接線上</div>
-                        )}
+                        {(() => {
+                          const sum = closedSummary(stylistSettings?.[st.id]?.closedOnline, formatDate(viewDate));
+                          if (!sum) return null;
+                          return (
+                            <div style={{ fontSize:".55rem", color:"rgba(255,190,120,.95)", letterSpacing:".04em" }}>
+                              {sum.full ? "停接線上" : `${sum.text} 停接`}
+                            </div>
+                          );
+                        })()}
                       </>
                     );
                   })() : (
@@ -4050,18 +4119,19 @@ function ScheduleView({ bookings, isMobile, stylistSettings, onAddBooking, styli
                 {/* 一鍵切換該日線上收單 */}
                 {isWorkToday && stylistMgr?.toggleClosedOnline && (() => {
                   const vStr   = formatDate(viewDate);
-                  const closed = isOnlineClosed(st.id, viewDate, stylistSettings);
+                  const sum    = closedSummary(stylistSettings?.[st.id]?.closedOnline, vStr);
+                  const closed = !!sum;
                   return (
                     <button
                       onClick={()=>stylistMgr.toggleClosedOnline(st.id, vStr)}
-                      title={closed ? "恢復線上預約" : "暫停當日線上預約"}
+                      title={closed ? (sum.full ? "恢復線上預約" : `目前 ${sum.text} 停接，點一下恢復全日線上預約`) : "暫停當日線上預約"}
                       style={{ position:"absolute", top:4, right:4, width:22, height:22, borderRadius:"50%",
                         border:"none", cursor:"pointer", fontSize:".62rem", lineHeight:1,
                         display:"flex", alignItems:"center", justifyContent:"center",
                         background: closed ? "rgba(196,122,58,.95)" : "rgba(255,255,255,.75)",
                         color: closed ? "#fff" : "#5a4a3a",
                         boxShadow:"0 1px 4px rgba(0,0,0,.3)", WebkitTapHighlightColor:"transparent" }}>
-                      {closed ? "🔒" : "🔓"}
+                      {closed ? (sum.full ? "🔒" : "🕐") : "🔓"}
                     </button>
                   );
                 })()}
@@ -4154,6 +4224,8 @@ function StylistRoster({ bookings, isMobile, stylistMgr, stylistsMgr }) {
   const [editId, setEditId]         = useState(null);
   const [holidayInput, setHolidayInput] = useState("");
   const [closedInput,  setClosedInput]  = useState("");
+  const [closedFrom,   setClosedFrom]   = useState("");   // 空字串＝整天
+  const [closedTo,     setClosedTo]     = useState("");
   const [showAdd, setShowAdd]       = useState(false);
   const [newForm, setNewForm]       = useState({ name:"", title:"", exp:"", bio:"", color:"#c4835a", specialty:[], workDays:[1,2,3,4,5,6], icon:"💇" });
 
@@ -4339,11 +4411,13 @@ function StylistRoster({ bookings, isMobile, stylistMgr, stylistsMgr }) {
           const eff          = stylistMgr?.getEffective ? stylistMgr.getEffective(st) : { photo:null, workDays:st.workDays, holidays:[], closedOnline:[] };
           const isWorkToday  = isStylistAvailable(st, today, stylistMgr?.settings);
           const closedList   = eff.closedOnline || [];
-          const upcomingClosed = closedList.filter(d => d >= todayStr);
-          const todayClosed  = closedList.includes(todayStr);
+          const upcomingClosed = closedList.filter(e => (parseClosedEntry(e)?.date || e) >= todayStr);
+          const todaySum     = closedSummary(closedList, todayStr);
+          const todayClosed  = !!todaySum;
           const tmrDate      = (() => { const d = new Date(today); d.setDate(d.getDate()+1); return d; })();
           const tmrStr       = formatDate(tmrDate);
-          const tmrClosed    = closedList.includes(tmrStr);
+          const tmrSum       = closedSummary(closedList, tmrStr);
+          const tmrClosed    = !!tmrSum;
           const tmrWorking   = isStylistAvailable(st, tmrDate, stylistMgr?.settings);
           const todayCount   = bookings.filter(b=>b.stylistId===st.id&&b.date===todayStr&&b.status!=="cancelled").length;
           const totalCount   = bookings.filter(b=>b.stylistId===st.id&&b.status!=="cancelled").length;
@@ -4367,8 +4441,12 @@ function StylistRoster({ bookings, isMobile, stylistMgr, stylistsMgr }) {
 
           const handleAddClosed = () => {
             if (!closedInput) return;
-            stylistMgr?.addClosedOnline(st.id, closedInput);
-            setClosedInput("");
+            const f = closedFrom ? slotToMinutes(closedFrom) : null;
+            const t = closedTo   ? slotToMinutes(closedTo)   : null;
+            if (f !== null && t !== null && t <= f) { alert("結束時間要晚於開始時間"); return; }
+            if ((f === null) !== (t === null)) { alert("時段請同時選擇開始與結束時間；若要整天暫停，兩邊都留空即可"); return; }
+            stylistMgr?.addClosedOnline(st.id, makeClosedEntry(closedInput, f, t));
+            setClosedInput(""); setClosedFrom(""); setClosedTo("");
           };
 
           const handleAddHoliday = () => {
@@ -4581,17 +4659,18 @@ function StylistRoster({ bookings, isMobile, stylistMgr, stylistsMgr }) {
                   <div style={{ padding:".5rem .75rem", borderBottom:"1px solid var(--line)" }}>
                     <div style={{ fontSize:".6rem", letterSpacing:".16em", color:"var(--ink3)", textTransform:"uppercase", marginBottom:".4rem" }}>線上預約收單</div>
                     {[
-                      { key:"today", label:"今日", date:todayStr, closed:todayClosed, show:isWorkToday },
-                      { key:"tmr",   label:"明日", date:tmrStr,   closed:tmrClosed,   show:tmrWorking },
+                      { key:"today", label:"今日", date:todayStr, closed:todayClosed, sum:todaySum, show:isWorkToday },
+                      { key:"tmr",   label:"明日", date:tmrStr,   closed:tmrClosed,   sum:tmrSum,   show:tmrWorking },
                     ].filter(r=>r.show).map(row => (
                       <div key={row.key} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:".5rem", padding:".22rem 0" }}>
                         <div style={{ minWidth:0 }}>
                           <div style={{ fontSize:".74rem", color: row.closed ? "#c47a3a" : "var(--ink2)", fontWeight:600 }}>
-                            {row.label} {row.closed ? "已停接線上" : "開放線上預約"}
+                            {row.label} {!row.closed ? "開放線上預約" : row.sum?.full ? "整天停接線上" : `${row.sum.text} 停接線上`}
                           </div>
                           <div style={{ fontSize:".58rem", color:"var(--ink4)", marginTop:".05rem" }}>
                             {row.date} ({["日","一","二","三","四","五","六"][parseDate(row.date).getDay()]})
                             {row.closed ? " · 現場／電話仍可" : ""}
+                            {row.closed && !row.sum?.full ? "（其餘時段照常開放）" : ""}
                           </div>
                         </div>
                         <div onClick={()=>stylistMgr?.toggleClosedOnline(st.id, row.date)}
@@ -4609,9 +4688,14 @@ function StylistRoster({ bookings, isMobile, stylistMgr, stylistsMgr }) {
                   <div style={{ padding:".5rem .75rem", borderBottom:"1px solid var(--line)" }}>
                     <div style={{ fontSize:".6rem", letterSpacing:".16em", color:"var(--ink3)", textTransform:"uppercase", marginBottom:".3rem" }}>暫停線上預約</div>
                     <div style={{ display:"flex", flexWrap:"wrap", gap:".22rem" }}>
-                      {upcomingClosed.map(d=>(
-                        <span key={d} style={{ fontSize:".68rem", padding:".1rem .45rem", borderRadius:20, background:"rgba(196,122,58,.1)", color:"#c47a3a", border:"1px solid rgba(196,122,58,.28)" }}>{d}</span>
-                      ))}
+                      {upcomingClosed.map(e=>{
+                        const p = parseClosedEntry(e);
+                        return (
+                          <span key={e} style={{ fontSize:".68rem", padding:".1rem .45rem", borderRadius:20, background:"rgba(196,122,58,.1)", color:"#c47a3a", border:"1px solid rgba(196,122,58,.28)" }}>
+                            {p?.date || e}{p?.partial ? ` ${minsToTime(p.from)}–${minsToTime(p.to)}` : " 整天"}
+                          </span>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -4634,8 +4718,9 @@ function StylistRoster({ bookings, isMobile, stylistMgr, stylistsMgr }) {
                     <div style={{ fontSize:".6rem", letterSpacing:".16em", color:"#c47a3a", textTransform:"uppercase", marginBottom:".2rem" }}>暫停線上預約日期</div>
                     <div style={{ fontSize:".62rem", color:"var(--ink4)", marginBottom:".45rem", lineHeight:1.5 }}>
                       當天仍正常上班，但顧客無法在線上選到此設計師；後台手動建立預約不受限制。
+                      <br/>時間留空＝整天暫停；填起訖時間＝只暫停該時段，其餘時間照常開放線上預約。
                     </div>
-                    <div style={{ display:"flex", gap:".4rem", marginBottom:".5rem" }}>
+                    <div style={{ display:"flex", gap:".4rem", marginBottom:".4rem" }}>
                       <input type="date" value={closedInput} onChange={e=>setClosedInput(e.target.value)}
                         style={{ padding:".3rem .55rem", border:"1px solid var(--line)", borderRadius:6, fontSize:".8rem", color:"var(--ink)", background:"#fff", outline:"none", flex:1, minWidth:0 }}/>
                       <button onClick={handleAddClosed} disabled={!closedInput}
@@ -4643,16 +4728,41 @@ function StylistRoster({ bookings, isMobile, stylistMgr, stylistsMgr }) {
                         ＋ 新增
                       </button>
                     </div>
+                    <div style={{ display:"flex", gap:".35rem", alignItems:"center", marginBottom:".55rem" }}>
+                      <select value={closedFrom} onChange={e=>setClosedFrom(e.target.value)}
+                        style={{ padding:".28rem .4rem", border:"1px solid var(--line)", borderRadius:6, fontSize:".76rem", color:"var(--ink)", background:"#fff", outline:"none", flex:1, minWidth:0 }}>
+                        <option value="">整天</option>
+                        {PAUSE_TIME_OPTIONS.map(t=><option key={t} value={t}>{t}</option>)}
+                      </select>
+                      <span style={{ fontSize:".74rem", color:"var(--ink4)" }}>～</span>
+                      <select value={closedTo} onChange={e=>setClosedTo(e.target.value)}
+                        style={{ padding:".28rem .4rem", border:"1px solid var(--line)", borderRadius:6, fontSize:".76rem", color:"var(--ink)", background:"#fff", outline:"none", flex:1, minWidth:0 }}>
+                        <option value="">整天</option>
+                        {PAUSE_TIME_OPTIONS.map(t=><option key={t} value={t}>{t}</option>)}
+                      </select>
+                      <button type="button" onClick={()=>{ setClosedFrom(""); setClosedTo(""); }}
+                        style={{ padding:".28rem .5rem", background:"none", border:"1px solid var(--line)", borderRadius:6, color:"var(--ink3)", fontSize:".72rem", cursor:"pointer", whiteSpace:"nowrap" }}>
+                        整天
+                      </button>
+                    </div>
                     {closedList.length > 0 && (
                       <div style={{ maxHeight:110, overflowY:"auto", display:"flex", flexDirection:"column", gap:".22rem" }}>
-                        {[...closedList].sort().map(d=>(
-                          <div key={d} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:".22rem .5rem", borderRadius:6, background:"rgba(196,122,58,.08)", border:"1px solid rgba(196,122,58,.18)" }}>
-                            <span style={{ fontSize:".78rem", color: d < todayStr ? "var(--ink4)" : "#c47a3a" }}>
-                              {d} {d >= todayStr && `(${["日","一","二","三","四","五","六"][parseDate(d).getDay()]})`}
-                            </span>
-                            <button onClick={()=>stylistMgr?.removeClosedOnline(st.id, d)} style={{ background:"none", border:"none", color:"#c47a3a", cursor:"pointer", fontSize:".8rem", padding:"0 .2rem" }}>✕</button>
-                          </div>
-                        ))}
+                        {[...closedList].sort().map(e=>{
+                          const p  = parseClosedEntry(e);
+                          const dt = p?.date || e;
+                          return (
+                            <div key={e} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:".22rem .5rem", borderRadius:6, background:"rgba(196,122,58,.08)", border:"1px solid rgba(196,122,58,.18)" }}>
+                              <span style={{ fontSize:".78rem", color: dt < todayStr ? "var(--ink4)" : "#c47a3a" }}>
+                                {dt} {dt >= todayStr && `(${["日","一","二","三","四","五","六"][parseDate(dt).getDay()]})`}
+                                {" "}
+                                <span style={{ fontSize:".72rem", fontWeight: p?.partial ? 700 : 400, color: p?.partial ? "#c47a3a" : "var(--ink4)" }}>
+                                  {p?.partial ? `${minsToTime(p.from)}–${minsToTime(p.to)}` : "整天"}
+                                </span>
+                              </span>
+                              <button onClick={()=>stylistMgr?.removeClosedOnline(st.id, e)} style={{ background:"none", border:"none", color:"#c47a3a", cursor:"pointer", fontSize:".8rem", padding:"0 .2rem" }}>✕</button>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
