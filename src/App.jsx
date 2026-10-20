@@ -4439,6 +4439,14 @@ function StylistRoster({ bookings, isMobile, stylistMgr, stylistsMgr }) {
             stylistMgr?.setWorkDays(st.id, cur.sort((a,b)=>a-b));
           };
 
+          // 選到的日期設計師是否有排班（沒排班時暫停設定不會有任何作用）
+          const closedDayOff = (() => {
+            if (!closedInput) return null;
+            const d = parseDate(closedInput);
+            if (isStylistAvailable(st, d, stylistMgr?.settings)) return null;
+            return getStylistOffReason(st, d, stylistMgr?.settings) === "holiday" ? "特休" : "非上班日";
+          })();
+
           const handleAddClosed = () => {
             if (!closedInput) return;
             const f = closedFrom ? slotToMinutes(closedFrom) : null;
@@ -4728,6 +4736,14 @@ function StylistRoster({ bookings, isMobile, stylistMgr, stylistsMgr }) {
                         ＋ 新增
                       </button>
                     </div>
+                    {closedDayOff && (
+                      <div style={{ padding:".35rem .5rem", marginBottom:".45rem", borderRadius:6,
+                        background:"rgba(196,80,80,.08)", border:"1px solid rgba(196,80,80,.3)",
+                        fontSize:".68rem", color:"#b04a4a", lineHeight:1.5 }}>
+                        ⚠️ {st.name} 在 {closedInput}（{["日","一","二","三","四","五","六"][parseDate(closedInput).getDay()]}）是{closedDayOff}，
+                        本來就不開放線上預約；設在這天不會有任何作用。要先到上方「常規上班日」加上這天，暫停時段才生效。
+                      </div>
+                    )}
                     <div style={{ display:"flex", gap:".35rem", alignItems:"center", marginBottom:".55rem" }}>
                       <select value={closedFrom} onChange={e=>setClosedFrom(e.target.value)}
                         style={{ padding:".28rem .4rem", border:"1px solid var(--line)", borderRadius:6, fontSize:".76rem", color:"var(--ink)", background:"#fff", outline:"none", flex:1, minWidth:0 }}>
@@ -4758,6 +4774,9 @@ function StylistRoster({ bookings, isMobile, stylistMgr, stylistsMgr }) {
                                 <span style={{ fontSize:".72rem", fontWeight: p?.partial ? 700 : 400, color: p?.partial ? "#c47a3a" : "var(--ink4)" }}>
                                   {p?.partial ? `${minsToTime(p.from)}–${minsToTime(p.to)}` : "整天"}
                                 </span>
+                                {dt >= todayStr && !isStylistAvailable(st, parseDate(dt), stylistMgr?.settings) && (
+                                  <span style={{ fontSize:".66rem", color:"#b04a4a", marginLeft:".3rem" }}>· 當天未排班，設定不生效</span>
+                                )}
                               </span>
                               <button onClick={()=>stylistMgr?.removeClosedOnline(st.id, e)} style={{ background:"none", border:"none", color:"#c47a3a", cursor:"pointer", fontSize:".8rem", padding:"0 .2rem" }}>✕</button>
                             </div>
