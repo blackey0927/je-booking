@@ -746,6 +746,10 @@ const PAUSE_TIME_OPTIONS = (() => {
   return out;
 })();
 const BOOK_SLOTS = generateSlots(SALON.hours.open, SALON.hours.close, BOOKING_SLOT_MINUTES);
+// 家庭預約改用 15 分鐘一格：兒童／男子剪髮 15 分鐘，同一位設計師可以接連剪，不會空等
+const AUTO_STYLIST = "__auto__"; // 家庭預約成員「不指定設計師」，送出前由自動排時段換成實際設計師
+const FAMILY_SLOT_MINUTES = 15;
+const FAMILY_SLOTS = generateSlots(SALON.hours.open, SALON.hours.close, FAMILY_SLOT_MINUTES);
 
 /* ═══════════════════════════════════════════════════════════
    STORAGE SHIM
@@ -1978,6 +1982,9 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
   const [members, setMembers]   = useState([ newMember() ]);
   const [activeMember, setActiveMember] = useState(0);
   const [memberStep, setMemberStep] = useState(0); // 0=service 1=stylist 2=datetime
+  const [autoDate, setAutoDate]   = useState("");
+  const [autoStart, setAutoStart] = useState("");
+  const [autoMsg, setAutoMsg]     = useState(null); // { ok, text, plan? }
 
   const SERVICES_LOCAL_OUTER = services;
   const STYLISTS_LOCAL_OUTER = stylists;
@@ -1987,8 +1994,8 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
   const memberDuration = (m) => memberSvcs(m).reduce((sum,s)=>sum+(s.duration||0),0)
     + shampooExtraMinutes(m.services, null, SERVICES_LOCAL_OUTER);
   const memberStylist  = (m) => STYLISTS_LOCAL_OUTER.find(s=>s.id===m.stylist);
-  const memberSlots    = (m, selfIdx = -1) => {
-    if (!m.stylist || !m.date || !m.services?.length) return [];
+  const memberSlots    = (m, selfIdx = -1, others = members) => {
+    if (!m.stylist || m.stylist === AUTO_STYLIST || !m.date || !m.services?.length) return [];
     const dur     = memberDuration(m);
     const dateObj = typeof m.date === "string" ? parseDate(m.date) : m.date;
     if (isOnlineClosed(m.stylist, dateObj, stylistSettings)) return [];
@@ -2001,7 +2008,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
     const mDateStr = typeof m.date === "string" ? m.date : formatDate(m.date);
 
     // 同一組家庭預約中，其他成員已選定的時段（同設計師同日才算衝突）
-    const siblings = members
+    const siblings = others
       .map((o, i) => ({ o, i }))
       .filter(({ o, i }) =>
         i !== selfIdx && o.stylist === m.stylist && o.time &&
@@ -2009,7 +2016,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
       )
       .map(({ o }) => ({ start: slotToMinutes(o.time), end: slotToMinutes(o.time) + memberDuration(o) }));
 
-    return BOOK_SLOTS.filter(slot=>{
+    return FAMILY_SLOTS.filter(slot=>{
       const sm = slotToMinutes(slot);
       if (sm < dh.open) return false;
       if (sm + dur > dh.close) return false;
@@ -2027,7 +2034,36 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
         stylistId:m.stylist, bookings, stylists:STYLISTS_LOCAL_OUTER, overrides:stylistSettings });
     });
   };
-  const memberComplete    = (m) => !!(m.name && m.services?.length && m.stylist && m.date && m.time);
+  const memberComplete    = (m) => !!(m.name && m.services?.length && m.stylist && m.stylist !== AUTO_STYLIST && m.date && m.time);
+
+  // ── 自動排時段 ──
+  // 依成員順序，每位找「開始時間之後最早有空」的時段；
+  // 有指定設計師的照他選的人排，「不指定」或未選的從會做該服務的設計師中挑最早、且目前分配最少的人。
+  const stylistCanDo = (st, m) => (m.services || []).every(id => {
+    const s = SERVICES_LOCAL_OUTER.find(x => x.id === id);
+    return s && (st.specialty || []).includes(s.zh);
+  });
+  const autoSchedule = (dateStr, startSlot) => {
+    const plan = members.map(m => ({ ...m, date: dateStr, time: null,
+      stylist: m.stylist === AUTO_STYLIST ? null : m.stylist, wasAuto: !m.stylist || m.stylist === AUTO_STYLIST }));
+    const startMin = slotToMinutes(startSlot);
+    for (let i = 0; i < plan.length; i++) {
+      const m = plan[i];
+      const cands = m.wasAuto
+        ? STYLISTS_LOCAL_OUTER.filter(st => st.id !== "any" && stylistCanDo(st, m)).map(st => st.id)
+        : [m.stylist];
+      let best = null;
+      for (const sid of cands) {
+        const t = memberSlots({ ...m, stylist: sid }, i, plan).find(sl => slotToMinutes(sl) >= startMin);
+        if (!t) continue;
+        const load = plan.filter(p => p.stylist === sid && p.time).length;
+        if (!best || slotToMinutes(t) < slotToMinutes(best.t) || (t === best.t && load < best.load)) best = { sid, t, load };
+      }
+      if (!best) return { ok: false, idx: i, name: m.name || `成員 ${i + 1}` };
+      plan[i] = { ...m, stylist: best.sid, time: best.t };
+    }
+    return { ok: true, plan: plan.map(({ wasAuto, ...m }) => m) };
+  };
   const allMembersComplete = members.every(memberComplete);
 
   const today = new Date(); today.setHours(0,0,0,0);
@@ -2600,7 +2636,7 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
                       </div>
                       {done && (
                         <div style={{ fontSize:".72rem", color:"var(--ink3)", marginTop:".1rem", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
-                          {svcs.map(s=>s.zh).join("＋")} · {stObj?.name} · {m.date||""} {m.time||""}
+                          {svcs.map(s=>s.zh).join("＋")} · {stObj?.name || (m.stylist===AUTO_STYLIST ? "自動安排" : "")} · {m.date||""} {m.time||""}
                         </div>
                       )}
                       {!done && !isOpen && (
@@ -2692,6 +2728,13 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
                               </button>
                             );
                           })}
+                          {/* 不指定：交給「自動排時段」安排 */}
+                          <button onClick={()=>updateMember(idx,{stylist:AUTO_STYLIST,date:null,time:null})}
+                            style={{ borderRadius:10, border:`2px solid ${m.stylist===AUTO_STYLIST?"var(--copper)":"var(--line)"}`, background:m.stylist===AUTO_STYLIST?"var(--copper-bg)":"var(--card)", color:m.stylist===AUTO_STYLIST?"var(--copper)":"var(--ink2)", aspectRatio:"3/2", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:".2rem", padding:".4rem" }}>
+                            <span style={{ fontSize:"1.3rem" }}>🎲</span>
+                            <span style={{ fontSize:".74rem", fontWeight:600 }}>不指定</span>
+                            <span style={{ fontSize:".6rem", color:"var(--ink4)" }}>自動安排有空的設計師</span>
+                          </button>
                         </div>
                       )}
 
@@ -2699,7 +2742,8 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
                       {memberStep===2 && (
                         <div>
                           {!m.stylist && <div style={{ fontSize:".82rem", color:"var(--ink4)", textAlign:"center", padding:"1rem" }}>請先選擇設計師</div>}
-                          {m.stylist && (
+                          {m.stylist===AUTO_STYLIST && <div style={{ fontSize:".82rem", color:"var(--ink3)", textAlign:"center", padding:"1rem", lineHeight:1.7 }}>🎲 這位成員不指定設計師<br/>請到下方「⚡ 一鍵自動排時段」安排時間</div>}
+                          {m.stylist && m.stylist!==AUTO_STYLIST && (
                             <>
                               {/* Calendar */}
                               <div style={{ marginBottom:".75rem" }}>
@@ -2765,6 +2809,61 @@ function BookingFlow({ bookings, onBook, isMobile, stylistSettings, stylists=DEF
               );
             })}
           </div>
+
+          {/* ⚡ 一鍵自動排時段 */}
+          {(() => {
+            const ready = members.every(m => m.name && m.services?.length);
+            const t0 = new Date(); t0.setHours(0,0,0,0);
+            const minD = new Date(t0); if (salonSettings.blockSameDay) minD.setDate(minD.getDate() + 1);
+            const go = () => {
+              if (!ready) { setAutoMsg({ ok:false, text:"請先填好每位成員的姓名和服務" }); return; }
+              if (!autoDate || !autoStart) { setAutoMsg({ ok:false, text:"請選擇日期和希望開始的時間" }); return; }
+              const r = autoSchedule(autoDate, autoStart);
+              if (!r.ok) { setAutoMsg({ ok:false, text:`「${r.name}」在 ${autoDate} ${autoStart} 之後排不進去，請換個日期或提早開始時間` }); return; }
+              setMembers(r.plan); setActiveMember(-1);
+              setAutoMsg({ ok:true, plan:r.plan });
+            };
+            return (
+              <div data-auto-panel style={{ background:"var(--copper-bg)", border:"1.5px solid var(--copper-bd)", borderRadius:14, padding:".85rem 1rem", marginBottom:".9rem" }}>
+                <div style={{ fontSize:".9rem", fontWeight:700, color:"var(--copper)", marginBottom:".25rem" }}>⚡ 一鍵自動排時段</div>
+                <div style={{ fontSize:".74rem", color:"var(--ink3)", marginBottom:".7rem", lineHeight:1.6 }}>
+                  填好每位成員的姓名和服務後，選日期和希望開始的時間，系統會自動分配有空的設計師；同一時間坐不下的會往後排。有指定設計師的成員會照您選的人排。
+                </div>
+                <div style={{ display:"flex", gap:".5rem", flexWrap:"wrap", alignItems:"flex-end" }}>
+                  <div style={{ flex:"1 1 9rem" }}>
+                    <label className="field-label">日期</label>
+                    <input className="field-input" type="date" min={formatDate(minD)} value={autoDate} onChange={e=>{ setAutoDate(e.target.value); setAutoMsg(null); }}/>
+                  </div>
+                  <div style={{ flex:"1 1 7rem" }}>
+                    <label className="field-label">希望開始</label>
+                    <select className="field-input" value={autoStart} onChange={e=>{ setAutoStart(e.target.value); setAutoMsg(null); }}>
+                      <option value="">選擇時間</option>
+                      {FAMILY_SLOTS.map(sl => <option key={sl} value={sl}>{sl}</option>)}
+                    </select>
+                  </div>
+                  <button onClick={go}
+                    style={{ flex:"1 1 8rem", padding:".62rem .8rem", borderRadius:10, border:"none", background:"var(--copper)", color:"#fff", fontSize:".84rem", fontWeight:700, cursor:"pointer" }}>
+                    自動排時段
+                  </button>
+                </div>
+                {autoMsg && !autoMsg.ok && (
+                  <div style={{ marginTop:".6rem", fontSize:".78rem", color:"#c05050" }}>{autoMsg.text}</div>
+                )}
+                {autoMsg && autoMsg.ok && (
+                  <div style={{ marginTop:".7rem", background:"var(--card)", borderRadius:10, padding:".6rem .75rem" }}>
+                    <div style={{ fontSize:".78rem", fontWeight:600, color:"var(--ink)", marginBottom:".35rem" }}>✓ 已排好，請確認（可點開成員微調）</div>
+                    {[...autoMsg.plan].sort((a,b)=>slotToMinutes(a.time)-slotToMinutes(b.time)).map(m => (
+                      <div key={m.id} data-auto-row style={{ fontSize:".8rem", color:"var(--ink2)", display:"flex", gap:".6rem", padding:".15rem 0" }}>
+                        <span style={{ fontWeight:700, color:"var(--copper)", width:"3.2rem" }}>{m.time}</span>
+                        <span style={{ flex:1 }}>{m.name}</span>
+                        <span style={{ color:"var(--ink3)" }}>{memberStylist(m)?.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* 新增成員按鈕 */}
           <button onClick={()=>{ const nm=newMember(); setMembers(p=>[...p,nm]); setActiveMember(members.length); setMemberStep(0); }}
@@ -3979,7 +4078,7 @@ function CalendarView({ bookings, onUpdateStatus, onDelete, onEditBooking, isMob
           </div>
           {selectedBookings.length===0
             ? <div style={{ padding:"1.5rem", textAlign:"center", fontSize:".9rem", color:"#999999", background:"rgba(0,0,0,.03)", borderRadius:8, border:"1px dashed var(--line)" }}>當日無預約</div>
-            : selectedBookings.map(b=><BookingCard key={b.id} booking={b} onUpdateStatus={onUpdateStatus} onDelete={onDelete} onEditBooking={onEditBooking} isMobile={isMobile} lineSettings={lineSettings} stylistSettings={stylistSettings} stylists={stylists}/>)
+            : selectedBookings.map(b=><BookingCard key={b.id} booking={b} allBookings={bookings} onUpdateStatus={onUpdateStatus} onDelete={onDelete} onEditBooking={onEditBooking} isMobile={isMobile} lineSettings={lineSettings} stylistSettings={stylistSettings} stylists={stylists}/>)
           }
         </div>
       )}
@@ -5169,7 +5268,14 @@ function ServicesMenu({ isMobile, servicesMgr, svcPhotosMgr, svcPhotos={} }) {
 /* ═══════════════════════════════════════════════════════════
    BOOKING CARD (shared)
 ═══════════════════════════════════════════════════════════ */
-function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobile, lineSettings, stylistSettings, stylists=DEFAULT_STYLISTS }) {
+// 家庭預約的 customerName 存成「預約人（成員）」，取出預約人
+function groupBooker(b) {
+  const name = String(b.customerName || "");
+  const m = b.memberName ? "（" + b.memberName + "）" : "";
+  return m && name.endsWith(m) ? name.slice(0, -m.length) : name;
+}
+
+function BookingCard({ booking, allBookings=[], onUpdateStatus, onDelete, onEditBooking, isMobile, lineSettings, stylistSettings, stylists=DEFAULT_STYLISTS }) {
   const svcs  = getBookingSvcs(booking, SERVICES);
   const svc   = svcs[0] || null;
   const st    = stylists.find(s=>s.id===booking.stylistId);
@@ -5422,6 +5528,16 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
     );
   }
 
+  // 家庭預約：同一組的其他成員（未取消），依日期時間排序
+  const groupMates = booking.isGroup && booking.groupId
+    ? allBookings.filter(x => x && x.groupId === booking.groupId && x.id !== booking.id && x.status !== "cancelled")
+        .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+    : [];
+  // 系統自動加上的「家庭預約」備註不重複顯示，只留客人自己寫的
+  const shownNotes = booking.isGroup
+    ? String(booking.notes || "").replace(/（家庭預約）$/, "").replace(/^家庭預約$/, "")
+    : booking.notes;
+
   return (
     <div style={{ background:"#ffffff", border:`1px solid rgba(${hexToRgb(st?.color||"var(--copper)")},.35)`, borderRadius:8, overflow:"hidden", marginBottom:".6rem" }}>
       <div style={{ padding:".7rem .9rem", display:"flex", alignItems:"center", gap:".7rem", background:`rgba(${hexToRgb(st?.color||"var(--copper)")},.05)`, borderBottom:"1px solid rgba(0,0,0,.04)", flexWrap:"wrap" }}>
@@ -5458,6 +5574,21 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
             🎲 待指派設計師
           </span>
         )}
+        {/* 個人／家庭預約標示 */}
+        {booking.isGroup ? (
+          <span style={{ padding:".12rem .5rem", borderRadius:20, fontSize:".70rem", background:"rgba(214,120,150,.12)", color:"#b85c7c", border:"1px solid rgba(214,120,150,.35)", fontWeight:600 }}>
+            👨‍👩‍👧 家庭預約{booking.groupSize ? `・${booking.groupSize}人` : ""}
+          </span>
+        ) : (
+          <span style={{ padding:".12rem .5rem", borderRadius:20, fontSize:".70rem", background:"rgba(120,130,150,.08)", color:"#8a8f9c", border:"1px solid rgba(120,130,150,.2)" }}>
+            👤 個人預約
+          </span>
+        )}
+        {!booking.isGroup && /家庭|全家|家人/.test(booking.notes || "") && (
+          <span style={{ padding:".12rem .5rem", borderRadius:20, fontSize:".70rem", background:"rgba(220,160,50,.12)", color:"#c4900a", border:"1px solid rgba(220,160,50,.35)" }}>
+            ⚠️ 備註提到家庭，但為個人預約
+          </span>
+        )}
         {booking.source && booking.source !== "online" && (
           <span style={{ padding:".12rem .5rem", borderRadius:20, fontSize:".70rem",
             background:"rgba(99,130,180,.1)", color:"#607090",
@@ -5468,7 +5599,13 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
       </div>
       <div style={{ padding:".65rem .9rem", display:"grid", gridTemplateColumns: isMobile?"1fr":"1fr 1fr", gap:".3rem .8rem" }}>
         {[
-          ["顧客", booking.customerName],
+          ...(booking.isGroup
+            ? [["顧客", booking.memberName || booking.customerName],
+               ["預約人", groupBooker(booking)]]
+            : [["顧客", booking.customerName]]),
+          ...(groupMates.length ? [["同組成員", groupMates.map(m => (
+              <div key={m.id}>{m.memberName || m.customerName}　{m.date !== booking.date ? displayDate(m.date) + " " : ""}{m.time}・{(stylists.find(s => s.id === m.stylistId) || {}).name || "待指派"}</div>
+            ))]] : []),
           ["電話", booking.customerPhone
             ? <a href={`tel:${String(booking.customerPhone).replace(/[^0-9+]/g, "")}`}
                 style={{ color:"inherit", textDecoration:"none" }}>{booking.customerPhone}</a>
@@ -5476,7 +5613,7 @@ function BookingCard({ booking, onUpdateStatus, onDelete, onEditBooking, isMobil
           ...(booking.lineId?[["LINE ID", booking.lineId]]:[]),
           ["日期", displayDate(booking.date)],
           ["費用", svcs.map(s=>`${s.price}${s.priceNote||""}`).join(" ＋ ") || "—"],
-          ...(booking.notes?[["備注", booking.notes]]:[]),
+          ...(shownNotes?[["備注", shownNotes]]:[]),
         ].map(([k,v])=>(
           <div key={k} style={{ display:"flex", gap:".4rem", fontSize:".84rem" }}>
             <span style={{ color:"#999999", flexShrink:0 }}>{k}：</span>
